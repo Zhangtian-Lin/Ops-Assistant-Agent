@@ -1,0 +1,1176 @@
+可以。我们就按“真正自己做出来”的方式学，不先堆 LangGraph、MCP、RAG、多 Agent 这些概念。
+
+我建议第一版做一个 **运维助手 Agent**：
+
+> 用户说：“帮我检查 nginx 状态”
+> Agent 自己理解任务 → 决定调用 `check_service()` 工具 → Python 真正执行工具 → 把结果返回模型 → Agent 总结结果。
+
+这样你能真正理解 Agent 和普通聊天机器人的区别。OpenAI 现在的 Agents SDK 核心就是 `Agent + Runner + Tools`，并且后面可以继续加 Session、Handoff、Guardrail、人工审批和 tracing。([OpenAI][1])
+
+---
+
+# 一、先理解 Agent 到底是什么
+
+先记住这个结构：
+
+```text
+                 ┌─────────────┐
+用户 ───────────▶│    Agent    │
+                 │   大模型     │
+                 └──────┬──────┘
+                        │
+                 判断要不要用工具
+                        │
+            ┌───────────▼───────────┐
+            │         Tools          │
+            │                        │
+            │ check_service()        │
+            │ get_disk_usage()       │
+            │ query_database()       │
+            │ restart_service()      │
+            └───────────┬────────────┘
+                        │
+                    执行结果
+                        │
+                 ┌──────▼──────┐
+                 │    Agent    │
+                 │ 分析工具结果 │
+                 └──────┬──────┘
+                        │
+                        ▼
+                     用户
+```
+
+普通 LLM：
+
+```text
+问题
+ ↓
+LLM
+ ↓
+回答
+```
+
+Agent：
+
+```text
+目标
+ ↓
+LLM 思考下一步
+ ↓
+选择工具
+ ↓
+执行工具
+ ↓
+观察结果
+ ↓
+继续决定下一步
+ ↓
+完成任务
+```
+
+所以可以先把 Agent 理解成：
+
+> **LLM + Instructions + Tools + Agent Loop**
+
+这里真正让它从“聊天机器人”变成“Agent”的关键，是 **Tools**。
+
+---
+
+# 二、创建第一个项目
+
+先建目录：
+
+```bash
+mkdir my-agent
+cd my-agent
+```
+
+创建 Python 虚拟环境：
+
+```bash
+python3 -m venv .venv
+```
+
+启动：
+
+```bash
+source .venv/bin/activate
+```
+
+安装：
+
+```bash
+pip install openai-agents
+```
+
+OpenAI 当前官方 Quickstart 使用的就是 `openai-agents` 包。([OpenAI][1])
+
+建议顺便看一下：
+
+```bash
+python --version
+```
+
+尽量使用 Python 3.10+。
+
+---
+
+# 三、配置 API Key
+
+当前终端执行：
+
+```bash
+export OPENAI_API_KEY="你的key"
+```
+
+检查：
+
+```bash
+echo $OPENAI_API_KEY
+```
+
+不要把 key 直接写进 Python 源码。
+
+官方 Agents SDK 默认可以直接读取 `OPENAI_API_KEY`。([OpenAI][1])
+
+---
+
+# 四、先做一个“没有工具”的 Agent
+
+创建：
+
+```text
+agent.py
+```
+
+写入：
+
+```python
+from agents import Agent, Runner
+
+
+agent = Agent(
+    name="Ops Assistant",
+    instructions="""
+    你是一名 Linux 运维助手。
+
+    你的职责：
+    1. 帮助用户分析 Linux 问题
+    2. 给出简洁明确的排查方法
+    3. 如果不知道，不要编造
+    4. 默认使用中文回答
+    """
+)
+
+
+result = Runner.run_sync(
+    agent,
+    "Linux 磁盘满了应该怎么排查？"
+)
+
+print(result.final_output)
+```
+
+运行：
+
+```bash
+python agent.py
+```
+
+正常情况下你会得到类似：
+
+```text
+可以依次执行：
+
+df -h
+du -sh /*
+...
+
+重点检查 /var/log、Docker 数据目录等。
+```
+
+到这里实际上还只是：
+
+```text
+Prompt + LLM
+```
+
+还不算特别有意思。
+
+---
+
+# 五、第二课：从零写 Linux 运维工具
+
+这一步要把 Agent 从“会说”变成“会做”。目标是先实现四个最基础的工具：
+
+- `check_cpu()`
+- `check_memory()`
+- `check_disk()`
+- `check_service()`
+
+它们要能真实在 Linux 里执行检查命令，并把结果返回给 Agent。
+
+建议做法：
+
+1. 先把工具函数写成“普通 Python 函数”。
+   - `check_cpu()`：读取 `/proc/stat` 或 `top`/`mpstat` 输出，计算 CPU 使用率。
+   - `check_memory()`：读取 `free -m`、`/proc/meminfo`，返回总量、已用、可用等信息。
+   - `check_disk()`：执行 `df -h`，返回磁盘挂载点、已用、可用、使用率。
+   - `check_service(service_name)`：执行 `systemctl status <service>` 或检查进程是否存在。
+
+2. 在 `agent.py` 里引入工具，并把它们包装成 Agent 可调用的 `Tool`。
+   - 例如，定义一个工具列表：
+     - `Tool(name="check_cpu", func=check_cpu, description="检查CPU使用情况")`
+     - `Tool(name="check_memory", func=check_memory, description="检查内存使用情况")`
+     - `Tool(name="check_disk", func=check_disk, description="检查磁盘使用情况")`
+     - `Tool(name="check_service", func=check_service, description="检查服务状态")`
+
+3. 让 Agent 真正走一次“模型决定调用工具 → 执行工具 → 返回结果”的流程。
+   - 先做一个简单对话：
+     - 用户：`帮我检查 nginx 服务状态`
+     - Agent：选择 `check_service("nginx")`
+     - 工具执行并返回结果
+     - Agent 汇总结果给用户
+
+4. 验证运行结果。
+   - 在 Linux 环境下运行 `python agent.py`
+   - 确认工具执行真实命令，返回结果不是模型凭空编造的
+
+这一课的核心价值在于：
+
+- 让你理解 Agent 的“工具调用机制”
+- 让 Agent 变成“真实可操作的运维助手”
+- 为后续审批、沙箱、安全打基础
+
+---
+
+# 六、第三课：Tool 调用审批 + Docker Sandbox + Runtime Security
+
+当第一版工具能工作后，继续强化安全和控制能力。
+
+主要目标：
+
+- 为工具调用加审批机制，避免模型自行执行危险命令
+- 在 Docker Sandbox 里执行工具，降低宿主机风险
+- 增加运行时安全检查，保护系统不被恶意输入破坏
+
+推荐拆解：
+
+1. `Tool` 调用审批流程
+   - 让模型先“建议要调用哪个工具和参数”，而不是直接执行
+   - 由你实现一个审批层：`approve_tool_call(tool_name, args)`
+   - 例如：当模型要执行 `check_service("nginx")`，先打印/日志审批，再执行
+   - 后续可以加上“白名单/黑名单工具”和“人工确认”
+
+2. Docker Sandbox
+   - 让工具实际在 Docker 容器里执行命令，而不是直接在宿主机上跑
+   - 例如把 `check_disk()`、`check_service()` 的命令放到一个受限容器里执行
+   - 这个阶段目标不是做一个完整容器平台，而是先验证“隔离执行”的思路
+
+3. Runtime Security
+   - 过滤工具输入参数，不让模型把危险字符串传进系统命令
+   - 对敏感命令做额外校验，例如禁止 `rm -rf /`、禁止修改系统配置
+   - 加入异常处理和审计日志：工具执行前后记录输入/输出
+
+这一课的价值在于：
+
+- 让你的 Agent 不仅能“做事”，还能“安全做事”
+- 为后续生产化、运维场景奠定基本保护能力
+- 让你理解 Agent 在真实运维环境下的风险和防护方法
+
+---
+
+# 七、你的下一阶段学习目标
+
+1. 先完成第二课，把 `check_cpu/check_memory/check_disk/check_service` 做成可运行工具。
+2. 再做第三课，补上审批、Sandbox 和 runtime 安全。
+3. 之后再考虑：
+   - 多 Agent 协作
+   - RAG / 长期记忆
+   - 用户会话管理和权限控制
+
+这样你学到的不是“概念”，而是“真正能运行、能控制、能保护”的运维 Agent。
+
+---
+
+# 五、开始真正做 Agent：增加 Tool
+
+现在我们给它一个真实工具。
+
+把 `agent.py` 改成：
+
+```python
+import shutil
+
+from agents import Agent, Runner
+from agents.decorators import tool
+
+
+@tool
+def get_disk_usage(path: str) -> str:
+    """
+    查询指定目录所在磁盘的空间使用情况。
+
+    Args:
+        path: 要检查的目录，例如 / 或 /tmp
+    """
+
+    total, used, free = shutil.disk_usage(path)
+
+    gb = 1024 ** 3
+
+    return (
+        f"path={path}, "
+        f"total={total / gb:.2f}GB, "
+        f"used={used / gb:.2f}GB, "
+        f"free={free / gb:.2f}GB"
+    )
+
+
+agent = Agent(
+    name="Ops Assistant",
+
+    instructions="""
+    你是一名 Linux 运维 Agent。
+
+    当用户询问磁盘空间时：
+
+    1. 不要猜测磁盘使用率
+    2. 必须调用 get_disk_usage
+    3. 根据工具返回结果分析
+    4. 使用中文回答
+    """,
+
+    tools=[
+        get_disk_usage
+    ],
+)
+
+
+result = Runner.run_sync(
+    agent,
+    "帮我看看根目录磁盘空间够不够"
+)
+
+print(result.final_output)
+```
+
+然后：
+
+```bash
+python agent.py
+```
+
+---
+
+# 六、这次发生了什么
+
+这一步非常重要。
+
+并不是 Python 直接执行：
+
+```python
+get_disk_usage("/")
+```
+
+而是：
+
+```text
+用户：
+帮我看看根目录磁盘空间够不够
+
+        ↓
+
+LLM：
+我要知道真实磁盘空间。
+
+        ↓
+
+LLM 决定调用：
+
+get_disk_usage(
+    path="/"
+)
+
+        ↓
+
+你的 Python 程序执行：
+
+shutil.disk_usage("/")
+
+        ↓
+
+返回：
+
+total=500GB
+used=320GB
+free=180GB
+
+        ↓
+
+结果重新交给 LLM
+
+        ↓
+
+LLM：
+当前磁盘剩余约 180GB，
+空间暂时充足……
+```
+
+**Tool 是模型决定调用的，但 Tool 本身是在程序中执行的。**
+
+Agents SDK 可以把普通 Python 函数包装成 Function Tool，并根据函数参数生成 tool schema；工具说明还可以来自函数 docstring。([OpenAI][2])
+
+所以建议你以后所有工具都写：
+
+```python
+@tool
+def xxx():
+    """
+    这个工具是干什么的。
+    """
+```
+
+否则模型不知道：
+
+> “这个工具什么时候应该调用？”
+
+---
+
+# 七、再加一个工具
+
+我们做一个服务状态查询。
+
+```python
+import subprocess
+
+from agents import Agent, Runner
+from agents.decorators import tool
+
+
+@tool
+def check_service(service_name: str) -> str:
+    """
+    检查 Linux systemd 服务的当前运行状态。
+
+    Args:
+        service_name: 服务名称，例如 nginx、docker、sshd
+    """
+
+    result = subprocess.run(
+        ["systemctl", "is-active", service_name],
+        capture_output=True,
+        text=True
+    )
+
+    return result.stdout.strip() or result.stderr.strip()
+
+
+agent = Agent(
+    name="Linux Ops Agent",
+
+    instructions="""
+    你是 Linux 运维 Agent。
+
+    如果用户询问某个服务是否正常，
+    必须调用 check_service 获取真实状态。
+
+    根据工具结果进行判断。
+
+    不允许编造服务器状态。
+    """,
+
+    tools=[
+        check_service
+    ],
+)
+
+
+result = Runner.run_sync(
+    agent,
+    "帮我看看 nginx 正不正常"
+)
+
+print(result.final_output)
+```
+
+假设机器上 nginx 正常：
+
+```text
+active
+```
+
+Agent 可能回答：
+
+```text
+nginx 当前运行正常，systemd 状态为 active。
+```
+
+---
+
+# 八、现在已经是一个真正的 Agent
+
+你的代码已经具备：
+
+```text
+                     Linux Ops Agent
+                           │
+              ┌────────────┴────────────┐
+              │                         │
+       get_disk_usage()          check_service()
+              │                         │
+            Python                    Linux
+              │                         │
+              └────────────┬────────────┘
+                           │
+                         Agent
+                           │
+                        最终回答
+```
+
+这里已经有非常重要的 Agent 能力：
+
+```text
+理解任务
+   ↓
+选择工具
+   ↓
+生成工具参数
+   ↓
+调用工具
+   ↓
+观察结果
+   ↓
+继续推理
+   ↓
+生成最终结果
+```
+
+OpenAI 的 `Runner` 就负责运行这个 Agent loop，直到拿到最终输出。([OpenAI][1])
+
+---
+
+# 九、Agent 的工具可以是什么
+
+这里就开始有意思了。
+
+你可以逐渐增加：
+
+```python
+tools=[
+    check_service,
+    get_disk_usage,
+    get_cpu_usage,
+    get_memory_usage,
+    query_database,
+    query_logs,
+    search_kubernetes,
+    restart_service,
+    execute_shell,
+]
+```
+
+那么用户可以直接说：
+
+```text
+帮我分析为什么 nginx 请求变慢了。
+```
+
+Agent 就可能自己做：
+
+```text
+1. check_service("nginx")
+
+2. get_cpu_usage()
+
+3. get_memory_usage()
+
+4. read_nginx_log()
+
+5. 分析错误日志
+
+6. 输出结论
+```
+
+这时候就已经不是：
+
+```text
+chatbot
+```
+
+而是：
+
+```text
+任务执行系统
+```
+
+官方 SDK 当前也支持 Python Function Tools、Web Search、File Search、Code Interpreter、MCP 等不同类型的工具。([OpenAI][2])
+
+---
+
+# 十、但这里马上会出现一个安全问题
+
+例如我们增加：
+
+```python
+@tool
+def execute_shell(command: str):
+    ...
+```
+
+用户说：
+
+```text
+帮我释放一下磁盘空间
+```
+
+Agent 可能生成：
+
+```bash
+rm -rf ...
+```
+
+于是架构就必须变成：
+
+```text
+              Agent
+                │
+                ▼
+         Tool Call Request
+                │
+                ▼
+        ┌───────────────┐
+        │  Policy Gate  │
+        └───────┬───────┘
+                │
+       ┌────────┴────────┐
+       │                 │
+     LOW               HIGH
+       │                 │
+ 自动执行             人工审批
+                         │
+                    approve?
+                    /       \
+                  YES       NO
+                   │         │
+                 执行       拒绝
+```
+
+例如：
+
+```text
+df -h
+```
+
+可以直接执行。
+
+但是：
+
+```text
+rm
+systemctl restart
+kubectl delete
+DROP TABLE
+git push
+curl POST
+```
+
+应该进入审批。
+
+Agents SDK 当前已经提供 Human-in-the-loop 机制，可以让敏感 Tool Call 暂停，等人工 approve/reject 后继续运行。([OpenAI][3])
+
+这一步其实就是一个非常典型的 **Action Boundary**。
+
+---
+
+# 十一、然后再加“记忆”
+
+目前：
+
+```bash
+python agent.py
+```
+
+问：
+
+```text
+我负责 nginx。
+```
+
+结束程序。
+
+下一次启动：
+
+```text
+我负责什么？
+```
+
+它不知道。
+
+这时候加：
+
+```text
+Session
+```
+
+SDK 当前有内置 session memory，例如本地开发可以用 `SQLiteSession`；同一个 session 后续运行时，SDK 会自动加载之前的对话历史。([OpenAI][4])
+
+结构变成：
+
+```text
+             Agent
+               │
+        ┌──────┴───────┐
+        │              │
+      Tools          Memory
+        │              │
+      Linux          SQLite
+```
+
+---
+
+# 十二、再往后才是 RAG
+
+如果你有：
+
+```text
+运维手册
+故障案例
+数据库文档
+公司 SOP
+P3394 标准
+安全规则
+```
+
+就增加：
+
+```text
+RAG / File Search
+```
+
+结构变成：
+
+```text
+                  User
+                    │
+                    ▼
+                 Agent
+                    │
+       ┌────────────┼────────────┐
+       ▼            ▼            ▼
+     Tools        Memory         RAG
+       │            │             │
+   系统/API       SQLite      文档/知识库
+```
+
+---
+
+# 十三、再往后才做 Multi-Agent
+
+比如：
+
+```text
+                    Master Agent
+                         │
+       ┌─────────────────┼──────────────────┐
+       │                 │                  │
+       ▼                 ▼                  ▼
+ Linux Agent      Database Agent      Security Agent
+       │                 │                  │
+    shell             SQL            Security Scan
+```
+
+例如用户：
+
+```text
+为什么 Doris 查询突然变慢？
+```
+
+Master Agent：
+
+```text
+           Master
+
+          /   |   \
+
+系统资源    数据库      安全
+ Agent     Agent       Agent
+
+   ↓         ↓           ↓
+
+CPU       慢SQL      最近配置变化
+Memory    数据倾斜   异常操作
+Disk      BE状态
+```
+
+最后 Master 汇总。
+
+这时候再引入：
+
+```text
+handoff
+agent-as-tool
+workflow
+```
+
+才比较合理。
+
+---
+
+# 十四、整个学习路线建议这样走
+
+不要一上来做：
+
+```text
+LangGraph
+ + MCP
+ + RAG
+ + Multi Agent
+ + Docker
+ + Redis
+ + Kafka
+ + Vector DB
+```
+
+很容易最后：
+
+> Agent 没搞明白，基础设施先写了 1 万行。
+
+按下面顺序做：
+
+```text
+阶段 1
+LLM
+ ↓
+Agent
+```
+
+↓
+
+```text
+阶段 2
+Agent
+ ↓
+Function Tool
+```
+
+↓
+
+```text
+阶段 3
+Agent
+ ↓
+多个 Tools
+ ↓
+自动选择工具
+```
+
+↓
+
+```text
+阶段 4
+Agent
+ ↓
+Session / Memory
+```
+
+↓
+
+```text
+阶段 5
+Agent
+ ↓
+RAG
+```
+
+↓
+
+```text
+阶段 6
+Agent
+ ↓
+Tool Permission
+ ↓
+Human Approval
+```
+
+↓
+
+```text
+阶段 7
+Agent
+ ↓
+Tracing / Observability
+```
+
+↓
+
+```text
+阶段 8
+Master Agent
+ ↓
+多个 Sub Agent
+```
+
+↓
+
+```text
+阶段 9
+MCP
+```
+
+↓
+
+```text
+阶段 10
+Docker Sandbox
+ + Runtime Security
+ + Guardrail
+ + Audit
+```
+
+你把这套跑完之后，**Agent 的底层逻辑基本就通了**。而且后面再看 LangGraph、Claude Agent SDK、Codex、Hermes，本质上很多概念都会对应得上。OpenAI Agents SDK 本身也已经提供 tracing，可记录模型生成、tool calls、handoffs、guardrails 等 Agent 执行事件。([OpenAI][5])
+
+---
+
+## 我建议你现在只做这一件事
+
+先创建：
+
+```text
+my-agent/
+└── agent.py
+```
+
+安装：
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+
+pip install openai-agents
+
+export OPENAI_API_KEY="你的key"
+```
+
+然后先运行这个最小版本：
+
+```python
+from agents import Agent, Runner
+
+agent = Agent(
+    name="My First Agent",
+    instructions="你是一个运维助手，使用中文回答。"
+)
+
+result = Runner.run_sync(
+    agent,
+    "帮我解释一下 df -h 是干什么的"
+)
+
+print(result.final_output)
+```
+
+**先确保这一段跑通。**
+
+下一步我可以直接继续带你做第二课：**从零写 `check_cpu / check_memory / check_disk / check_service` 四个工具，把它变成一个真正能操作 Linux 的运维 Agent**，然后第三步我们专门做 **Tool 调用审批 + Docker Sandbox + Runtime Security**。
+
+[1]: https://openai.github.io/openai-agents-python/quickstart/ "Quickstart - OpenAI Agents SDK"
+[2]: https://openai.github.io/openai-agents-python/tools/ "Tools - OpenAI Agents SDK"
+
+---
+
+# 新增学习内容（全部置于文档末尾）
+
+## 第二课：从零写 Linux 运维工具
+
+这一步的目标不是再学概念，而是让 Agent 真正“会做事”。
+
+你要实现 4 个最核心的工具：
+
+- `check_cpu()`
+- `check_memory()`
+- `check_disk()`
+- `check_service()`
+
+它们的职责是：
+
+- 读真实 Linux 运行状态
+- 返回结构化信息
+- 把结果交给 Agent 再做总结
+
+### 1）先写工具函数
+
+`check_disk()` 可以先这样写，极短但可运行：
+
+```python
+import shutil
+
+
+def check_disk(path="/"):
+    total, used, free = shutil.disk_usage(path)
+    return {
+        "path": path,
+        "total_gb": round(total / (1024 ** 3), 2),
+        "used_gb": round(used / (1024 ** 3), 2),
+        "free_gb": round(free / (1024 ** 3), 2),
+    }
+```
+
+这段代码的关键是：
+
+- 它不依赖大模型
+- 它直接查询真实磁盘状态
+- 它返回的结果可以直接给 Agent
+
+### 2）再写服务检查
+
+```python
+import subprocess
+
+
+def check_service(service_name: str) -> str:
+    result = subprocess.run(
+        ["systemctl", "is-active", service_name],
+        capture_output=True,
+        text=True,
+    )
+    return result.stdout.strip() or result.stderr.strip()
+```
+
+这段很重要，因为它展示了：
+
+- 模型不直接“想象”服务状态
+- 工具才是“真实数据来源”
+- Agent 的价值在于“决定调用什么工具”
+
+### 3）把工具接到 Agent
+
+接上工具之后，流程就变成：
+
+```text
+用户请求
+  ↓
+Agent 判断需要哪个工具
+  ↓
+调用 Python 工具
+  ↓
+拿到真实结果
+  ↓
+Agent 给出结论
+```
+
+这就是真正的 Agent，而不是只会聊天的 LLM。
+
+### 4）这一步的最终目标
+
+你要能够做到：
+
+- 用户说“帮我看看 nginx 正不正常”
+- Agent 调用 `check_service("nginx")`
+- 工具返回 `active` / `inactive`
+- Agent 根据真实状态回答用户
+
+---
+
+## 第三课：Tool 调用审批 + Docker Sandbox + Runtime Security
+
+当工具能运行后，下一步不是继续堆功能，而是加安全边界。
+
+### 1）审批层
+
+危险工具需要审批，不让模型直接执行：
+
+```python
+
+def approve_tool_call(tool_name: str, args: dict):
+    if tool_name in {"restart_service", "execute_shell"}:
+        print(f"审批中：{tool_name}({args})")
+        return False
+    return True
+```
+
+这段的意思是：
+
+- 普通查询类工具可以自动执行
+- 破坏性操作要停下来等待人工确认
+
+### 2）Docker Sandbox
+
+你可以把工具放进 Docker 容器执行，而不是直接跑在宿主机上。这样能降低风险：
+
+- 宿主机文件更安全
+- 容器内权限更受限
+- 容器可以快速重置
+
+### 3）Runtime Security
+
+在 Tool 调用前后做安全检查：
+
+- 封禁危险命令
+- 限制参数长度
+- 禁止直接执行 `rm -rf /` 类命令
+- 记录所有 tool call 和输出
+
+### 4）你真正学到的点
+
+这一课不是“额外知识点”，而是把 Agent 从“能跑”升级成“可控”。
+
+核心思想：
+
+```text
+Agent 能做事
+但不能无限制地做事
+```
+
+---
+
+## 你的下一步学习顺序
+
+建议严格按这个顺序：
+
+1. 第一课：先跑通最小 Agent
+2. 第二课：写 `check_cpu / check_memory / check_disk / check_service`
+3. 第三课：加审批 + Sandbox + Security
+4. 第四步：再做 Session / Memory
+5. 第五步：再做 RAG / File Search
+6. 第六步：再考虑多 Agent 协作
+
+不要一开始就做：
+
+- LangGraph
+- MCP
+- 多 Agent
+- 复杂 Framework
+
+因为那样很容易陷进去，最后连最基本的工具调用都没有真正搞明白。
+
+---
+
+## 现在的核心结论
+
+真正重要的不是“会聊天”，而是：
+
+```text
+Agent = LLM + Tool + Policy + Runtime Control
+```
+
+也就是说：
+
+- 模型负责判断
+- 工具负责真实操作
+- 审批负责安全边界
+- 容器负责隔离执行
+
+这才是运维 Agent 的真实工程路径。
+
+下一步，按这个顺序继续：
+
+- 先写 `check_cpu` / `check_memory` / `check_disk` / `check_service`
+- 再接入 Agent
+- 再加审批和安全机制
+- 最后再扩展到更复杂的 Agent 架构
+[3]: https://openai.github.io/openai-agents-python/human_in_the_loop/ "Human-in-the-loop - OpenAI Agents SDK"
+[4]: https://openai.github.io/openai-agents-python/sessions/ "Overview - OpenAI Agents SDK"
+[5]: https://openai.github.io/openai-agents-python/tracing/?utm_source=chatgpt.com "Tracing - OpenAI Agents SDK"
