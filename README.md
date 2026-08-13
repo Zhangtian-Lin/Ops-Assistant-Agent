@@ -2,7 +2,7 @@
 
 A lightweight, local AI agent built from scratch in Python. It features natural language tool routing, automated system checks, and a sophisticated multi-layered memory architecture.
 
-## 🚀 Key Features
+##  Key Features
 
 *   **Natural Language Routing**: Interprets user requests and automatically routes them to the appropriate system tools.
 *   **Safe Execution Environment**: Built-in permission checks and whitelists for dangerous operations.
@@ -13,7 +13,7 @@ A lightweight, local AI agent built from scratch in Python. It features natural 
     *   **Raw History**: Ground truth event logs ensuring hallucination-free retrieval.
 *   **Zero-Configuration Database**: Uses standard Python `sqlite3` for vector storage. No external database servers (like Milvus or Postgres) are required.
 
-## 🧠 Memory Architecture
+##  Memory Architecture
 
 The agent's `retrieve()` pipeline evaluates context by passing queries through multiple fallback layers:
 1. `session_summary.json` (Global Context)
@@ -23,14 +23,14 @@ The agent's `retrieve()` pipeline evaluates context by passing queries through m
 
 This guarantees that the language model always has the highest quality, conflict-resolved context before executing a prompt.
 
-## 🛠️ Technical Stack
+##  Technical Stack
 
 *   **Language**: Python 3
 *   **Database**: SQLite (`vector_engine.py`)
 *   **Embeddings**: `sentence-transformers` / `BAAI/bge-small-zh-v1.5` (384 dimensions)
 *   *Note: If the embedding model or network fails, the vector engine gracefully degrades to a deterministic local hashing algorithm.*
 
-## ⚙️ Quick Start
+##  Quick Start
 
 You can interact with the agent directly through the command line to avoid any terminal character encoding issues:
 
@@ -42,7 +42,7 @@ python agent.py "Please check my CPU usage"
 python agent.py
 ```
 
-## 📂 Project Structure
+##  Project Structure
 
 *   `agent.py` - Main entry point, tool registration, and routing logic.
 *   `memory.py` - Multi-layered memory management and retrieval orchestration.
