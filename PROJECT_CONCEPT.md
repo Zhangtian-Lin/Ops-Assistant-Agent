@@ -58,22 +58,21 @@
   - 记忆不等于所有系统日志；长期记忆必须有“价值筛选”
   - 记忆模块要区分事实、总结和当前上下文，避免把临时状态错误地当成长期能力
   - 多文档协同时需统一 `timestamp`、`session_id`、`event_id`，保证跨层检索的一致性和精准性
-    - 多文档协同时需统一 `timestamp`、`session_id`、`event_id`，保证跨层检索的一致性和精准性
+- **记忆的多层结构**：包含原始历史(history)、摘要(summary)、抽象(abstract)、索引(index)与向量索引(vector)
+  - **抽象层 (Abstract)**：将多个相关事件聚合为一个语义对象，并通过 `abstract_id` 映射回 `event_ids`
+  - **关键词索引**：负责精确匹配命中
+  - **向量索引 (Vector Index)**：主要基于抽象文本做 embedding，负责自然语言查询的语义召回
+- **检索顺序**：`retrieve()` 按 `summary -> keyword index -> vector index -> history` 的顺序检索
+  - 语义召回不替代事实回溯，最终回答仍以原始历史 (`history`) 为依据
+  - 向量层显著提升了自然语言与历史记忆之间的语义匹配能力
 
-    - 记忆采用多层结构：原始历史、摘要、抽象、索引与向量索引
-    - 关键词索引负责精确命中，向量索引负责语义召回
-    - **抽象层（属于抽象）**：
-      - 抽象层将多个相关事件聚合为一个语义对象，并通过 `abstract_id` 映射回 `event_ids`
-      - 向量层优先对抽象文本做 embedding，以便语义检索
-    - `retrieve()` 按 `summary -> keyword index -> vector index -> history` 的顺序检索
-    - 语义召回不替代事实回溯，最终回答仍以原始历史为依据
-    - 向量层用于提升自然语言查询与历史记忆之间的语义匹配能力
- - 记忆采用多层结构：原始历史、摘要、抽象、索引与向量索引
- - 关键词索引负责精确命中，向量索引负责语义召回（向量索引主要作用于抽象层）
- - 抽象层（Abstract）将多个相关事件聚合为一个语义对象，并通过 `abstract_id` 映射回 `event_ids`  （属于抽象层）
- - `retrieve()` 按 `summary -> keyword index -> vector index -> history` 的顺序检索
- - 语义召回不替代事实回溯，最终回答仍以原始历史为依据
- - 向量层用于提升自然语言查询与历史记忆之间的语义匹配能力（通常基于抽象文本的 embeddings）
+## 技术实现堆栈更新 (最新状态)
+
+- **主调度模块**：`agent.py` (修复了 Windows 终端中文输入编码问题，支持直接传入命令行参数避免交互式 input 阻塞)
+- **记忆与向量检索引擎**：
+  - 抽象与检索核心：`memory.py`
+  - 向量数据库持久化：基于 SQLite 实现的 `vector_engine.py` (`memory/vectors.db`)
+  - Embedding 模型：集成了 `BAAI/bge-small-zh-v1.5`，维度 384。支持在无环境时回退到 Hash 模式。
 
 ## 设计原则
 
