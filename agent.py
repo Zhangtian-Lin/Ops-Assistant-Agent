@@ -158,7 +158,11 @@ def parse_action_and_object(question: str) -> Tuple[Optional[str], Optional[str]
     elif '搜索' in q or 'search' in q:
         obj = 'search'
     elif any(w in q for w in ['记忆', '回顾', '历史', '上次', '之前', 'summary', '总结']):
-        obj = 'memory_request'
+        # detect clear/reset requests explicitly
+        if any(cw in q for cw in ['清空', '清除', '删除', '重置', 'reset']):
+            obj = 'memory_clear'
+        else:
+            obj = 'memory_request'
     else:
         obj = None
     return action, obj
@@ -169,10 +173,18 @@ def query_memory(query: str) -> dict:
     return {'status': 'ok', 'memory': result}
 
 
+def clear_memory() -> dict:
+    # create a pending approval to clear memory
+    req = memory.request_clear_session_history(requester='agent')
+    return {'status': 'pending_approval', 'request_id': req.get('request_id')}
+
+
 def route_task(question: str) -> dict:
     action, obj = parse_action_and_object(question)
     if obj == 'memory_request':
         return {'tool': 'query_memory', 'args': {'query': question}}
+    if obj == 'memory_clear':
+        return {'tool': 'clear_memory', 'args': {}}
     if obj == 'search':
         return {'tool': 'search_files', 'args': {'query': question}}
     if action != 'check':
@@ -203,6 +215,8 @@ def validate_args(tool_name: str, args: dict) -> Tuple[bool, str, dict]:
     if tool_name == 'query_memory':
         query = args.get('query', '')
         return (True, '', {'query': query}) if is_safe_text(query) else (False, '记忆查询关键词不安全', {})
+    if tool_name == 'clear_memory':
+        return True, '', {}
     if tool_name in {'check_cpu', 'check_memory'}:
         return True, '', {}
     return False, '不支持的工具', {}
@@ -242,11 +256,54 @@ TOOL_FUNCS = {
     'check_service': check_service,
     'search_files': search_files,
     'query_memory': query_memory,
+    'clear_memory': clear_memory,
 }
 
 
+def safe_input(prompt_text: str) -> str:
+    """解决 Windows 内嵌终端下 Python 原生 input() 无法输入中文的兼容性读取器。"""
+    print(prompt_text, end='', flush=True)
+    try:
+        line = sys.stdin.readline()
+        if not line:
+            return ''
+        return line.strip()
+    except Exception:
+        return input(prompt_text).strip()
+
+
 if __name__ == '__main__':
-    print('本地运维代理已启动，当前仅支持低风险查询。')
-    print('示例：检查 CPU、检查内存、检查磁盘、检查 nginx 服务、搜索 文件名/内容')
-    q = input('请输入指令：')
-    print(handle_user_query(q))
+    import sys
+    import io
+    # 强制重定向 Windows 控制台标准输入输出编码为 utf-8
+    if sys.platform == 'win32':
+        try:
+            sys.stdin.reconfigure(encoding='utf-8')
+            sys.stdout.reconfigure(encoding='utf-8')
+        except Exception:
+            pass
+
+    # 支持命令行直接传参测试，例如: python agent.py "帮我检查CPU"
+    if len(sys.argv) > 1:
+        query_text = ' '.join(sys.argv[1:])
+        print(f"执行命令行参数指令: {query_text}")
+        print("回应：", handle_user_query(query_text))
+        sys.exit(0)
+
+    print('===========================================================')
+    print('本地运维代理已启动，当前支持低风险查询与 BAAI 深度向量记忆。')
+    print('示例：检查 CPU、检查内存、检查磁盘、检查 nginx 服务、回顾一下之前网页服务器的情况')
+    print('输入 exit 退出程序')
+    print('===========================================================')
+    try:
+        while True:
+            q = safe_input('\n请输入指令：')
+            if not q:
+                continue
+            if q.lower() in {'exit', 'quit', '退出'}:
+                print('系统已退出。')
+                break
+            res = handle_user_query(q)
+            print('回应：', res)
+    except (KeyboardInterrupt, EOFError):
+        print('\n系统已退出。')

@@ -47,7 +47,8 @@
   - 查询记忆时，优先读取 `session_summary.json` 作为总览
   - 再读取 `session_index.json` 找到候选相关事件
   - 最后读取 `session_history.json` 获取事实细节和证据
-  - 若 summary 与 history 存在冲突，以 `history` 为最终事实依据；`summary` 只用于快速理解和高层判断
+  - 若 `summary` 与 `history` 存在冲突，以 `history` 为最终事实依据；`summary` 只用于快速理解和高层判断
+  - <span style="color:#888888">新增说明：记忆查询返回结果应包含 `summary`、`matched_history`、`index` 三部分，并在结果中明确说明是否存在 `summary`/`history` 冲突。</span>
 - 逻辑分支
   - 先判断是否为记忆相关请求
   - 再区分“读取记忆”、“写入新记忆”、“更新压缩记忆”、“清空记忆”
@@ -57,6 +58,22 @@
   - 记忆不等于所有系统日志；长期记忆必须有“价值筛选”
   - 记忆模块要区分事实、总结和当前上下文，避免把临时状态错误地当成长期能力
   - 多文档协同时需统一 `timestamp`、`session_id`、`event_id`，保证跨层检索的一致性和精准性
+    - 多文档协同时需统一 `timestamp`、`session_id`、`event_id`，保证跨层检索的一致性和精准性
+
+    - 记忆采用多层结构：原始历史、摘要、抽象、索引与向量索引
+    - 关键词索引负责精确命中，向量索引负责语义召回
+    - **抽象层（属于抽象）**：
+      - 抽象层将多个相关事件聚合为一个语义对象，并通过 `abstract_id` 映射回 `event_ids`
+      - 向量层优先对抽象文本做 embedding，以便语义检索
+    - `retrieve()` 按 `summary -> keyword index -> vector index -> history` 的顺序检索
+    - 语义召回不替代事实回溯，最终回答仍以原始历史为依据
+    - 向量层用于提升自然语言查询与历史记忆之间的语义匹配能力
+ - 记忆采用多层结构：原始历史、摘要、抽象、索引与向量索引
+ - 关键词索引负责精确命中，向量索引负责语义召回（向量索引主要作用于抽象层）
+ - 抽象层（Abstract）将多个相关事件聚合为一个语义对象，并通过 `abstract_id` 映射回 `event_ids`  （属于抽象层）
+ - `retrieve()` 按 `summary -> keyword index -> vector index -> history` 的顺序检索
+ - 语义召回不替代事实回溯，最终回答仍以原始历史为依据
+ - 向量层用于提升自然语言查询与历史记忆之间的语义匹配能力（通常基于抽象文本的 embeddings）
 
 ## 设计原则
 
