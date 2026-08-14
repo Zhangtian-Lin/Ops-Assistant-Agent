@@ -282,11 +282,11 @@ def route_task(question: str) -> dict:
     if obj == 'memory':
         return {'tool': 'check_memory', 'args': {}}
     if obj == 'disk_distribution':
-        m = re.search(r'([a-zA-Z])盘', question.lower())
+        m = re.search(r'([a-zA-Z])\s*盘', question.lower())
         path_arg = llm_args.get('path') or (f"{m.group(1).upper()}:\\" if m else '/')
         return {'tool': 'analyze_disk_distribution', 'args': {'path': path_arg}}
     if obj == 'disk':
-        m = re.search(r'([a-zA-Z])盘', question.lower())
+        m = re.search(r'([a-zA-Z])\s*盘', question.lower())
         path_arg = llm_args.get('path') or (f"{m.group(1).upper()}:\\" if m else '/')
         return {'tool': 'check_disk', 'args': {'path': path_arg}}
     if obj == 'service':
