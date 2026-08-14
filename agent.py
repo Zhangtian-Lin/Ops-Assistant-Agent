@@ -206,7 +206,7 @@ def search_files(query: str) -> dict:
 
 def parse_action_and_object(question: str) -> Tuple[Optional[str], Optional[str]]:
     q = question.lower()
-    action = 'check' if any(w in q for w in ['查', '查看', '查询', '检测', 'check', 'inspect', '分布', '详情', '占用']) else 'control' if any(w in q for w in ['重启', 'restart', '启动', '停止', 'stop']) else None
+    action = 'check' if any(w in q for w in ['查', '查看', '查询', '检测', '看', 'check', 'inspect', '分布', '详情', '占用']) else 'control' if any(w in q for w in ['重启', 'restart', '启动', '停止', 'stop']) else None
     # 先判断“明确意图词”（记忆/搜索/知识库/审计），避免被宽泛实体词（如“服务器”含“服务”）误抢
     if any(w in q for w in ['记忆', '回顾', '历史', '上次', '之前', 'summary', '总结']):
         # detect clear/reset requests explicitly
