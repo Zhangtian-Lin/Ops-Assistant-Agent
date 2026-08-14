@@ -8,8 +8,8 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 
 # 确定向量数据库存储路径
-WORKSPACE_ROOT = Path(__file__).resolve().parent
-MEMORY_DIR = WORKSPACE_ROOT / 'memory'
+WORKSPACE_ROOT = Path(__file__).resolve().parent.parent
+MEMORY_DIR = WORKSPACE_ROOT / 'data' / 'memory'
 DB_PATH = MEMORY_DIR / 'vectors.db'
 
 # 升级向量维度为 BAAI/bge-small-zh-v1.5 的标准 384 维

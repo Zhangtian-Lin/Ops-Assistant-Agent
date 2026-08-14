@@ -1,6 +1,7 @@
 # Python virtual environments
 .venv/
 .venv-1/
+.venv-broken-*/
 
 # Bytecode cache
 __pycache__/
@@ -21,3 +22,4 @@ Thumbs.db
 
 # Memory persistence
 memory/
+data/memory/

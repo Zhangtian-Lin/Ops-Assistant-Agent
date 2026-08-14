@@ -69,10 +69,13 @@
 ## 技术实现堆栈更新 (最新状态)
 
 - **主调度模块**：`agent.py` (修复了 Windows 终端中文输入编码问题，支持直接传入命令行参数避免交互式 input 阻塞)
-- **记忆与向量检索引擎**：
-  - 抽象与检索核心：`memory.py`
-  - 向量数据库持久化：基于 SQLite 实现的 `vector_engine.py` (`memory/vectors.db`)
+- **记忆与向量检索引擎 (核心层 `core/`)**：
+  - 抽象与检索核心：`core/memory.py`
+  - 向量数据库持久化：基于 SQLite 实现的 `core/vector_engine.py` (`data/memory/vectors.db`)
   - Embedding 模型：集成了 `BAAI/bge-small-zh-v1.5`，维度 384。支持在无环境时回退到 Hash 模式。
+- **外部知识库 (RAG 增强 `data/knowledge_base/`)**：
+  - 支持通过 `scripts/ingest_knowledge.py` 将运维标准 (SOP)、故障排查手册等外部 `.md` / `.txt` 文件切片并向量化注入数据库。
+  - 实现了“双库隔离”设计，将 Agent 个人运行历史记忆 (`item_type='history'`) 与静态标准规范 (`item_type='knowledge'`) 在数据集中分开管理。
 
 ## 设计原则
 

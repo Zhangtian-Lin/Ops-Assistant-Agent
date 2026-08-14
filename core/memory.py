@@ -4,11 +4,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-import vector_engine
+from core import vector_engine
 
 MAX_SESSION_HISTORY = 50
-WORKSPACE_ROOT = Path(__file__).resolve().parent
-MEMORY_DIR = WORKSPACE_ROOT / 'memory'
+WORKSPACE_ROOT = Path(__file__).resolve().parent.parent
+MEMORY_DIR = WORKSPACE_ROOT / 'data' / 'memory'
 SESSION_HISTORY_FILE = MEMORY_DIR / 'session_history.json'
 SESSION_SUMMARY_FILE = MEMORY_DIR / 'session_summary.json'
 SESSION_INDEX_FILE = MEMORY_DIR / 'session_index.json'
@@ -484,48 +484,51 @@ def retrieve(query: Optional[str] = None, topk: int = 10) -> Dict[str, Any]:
 
     if query:
         q = query.lower().strip()
-        # 1) Try abstract-level keyword matching
         abstracts = get_session_abstracts()
         q_tokens = _extract_keywords(q)
+        # 融合评分表：event_id -> 最终得分（关键词贡献精确分，向量贡献余弦分）
+        fused_scores: Dict[str, float] = {}
+
+        # 1) 关键词召回（精确命中，权重 1.0）——与向量召回并行，不再作为兜底
+        for eid in _find_event_ids_for_query(q):
+            fused_scores[eid] = fused_scores.get(eid, 0.0) + 1.0
+
+        # 2) abstract 层关键词命中（同样属于精确召回）
         for a in abstracts:
             text = (a.get('text') or '').lower()
             if q in text or any(tok in text for tok in q_tokens):
-                abstract_matches.append(a)
+                if a not in abstract_matches:
+                    abstract_matches.append(a)
                 for eid in a.get('event_ids', []):
-                    if eid not in matched_event_ids:
-                        matched_event_ids.append(eid)
+                    fused_scores[eid] = fused_scores.get(eid, 0.0) + 1.0
 
-        # 2) Vector Index Search (向量语义召回)
+        # 3) 向量语义召回（权重 = 余弦相似度）
         try:
             v_results = vector_engine.search_similar(q, top_k=topk)
             vector_matches = v_results
             for vr in v_results:
                 v_id = vr.get('id')
                 v_type = vr.get('type')
+                v_score = float(vr.get('score', 0.0))
                 if v_type == 'abstract':
                     for a in abstracts:
                         if a.get('abstract_id') == v_id:
                             if a not in abstract_matches:
                                 abstract_matches.append(a)
                             for eid in a.get('event_ids', []):
-                                if eid not in matched_event_ids:
-                                    matched_event_ids.append(eid)
+                                fused_scores[eid] = fused_scores.get(eid, 0.0) + v_score
                 elif v_type == 'history':
-                    if v_id not in matched_event_ids:
-                        matched_event_ids.append(v_id)
+                    fused_scores[v_id] = fused_scores.get(v_id, 0.0) + v_score
         except Exception:
             pass
 
-        # 3) Fallback to keyword index
-        if not matched_event_ids:
-            kw_event_ids = _find_event_ids_for_query(q)
-            for eid in kw_event_ids:
-                if eid not in matched_event_ids:
-                    matched_event_ids.append(eid)
+        # 4) 融合排序：按融合得分取 top_k
+        ranked = sorted(fused_scores.items(), key=lambda kv: kv[1], reverse=True)
+        matched_event_ids = [eid for eid, _ in ranked[:topk]]
 
-        # 4) Fetch history entries
+        # 5) history 只负责按 event_id 取原始事实，不参与排序
         if matched_event_ids:
-            history_matches = get_documents_by_ids(matched_event_ids)[:topk]
+            history_matches = get_documents_by_ids(matched_event_ids)
         else:
             history_matches = query_session_history(q, last_n=topk)
     else:
@@ -588,6 +591,20 @@ def query_session_history(query: str, last_n: Optional[int] = None) -> List[Dict
 def search_memory(query: Optional[str] = None, max_entries: int = 10) -> Dict[str, Any]:
     """按 summary -> index -> history 顺序检索记忆。"""
     return retrieve(query, topk=max_entries)
+
+
+def retrieve_knowledge(query: Optional[str] = None, top_k: int = 5) -> List[Dict[str, Any]]:
+    """从静态知识库（item_type='knowledge'）检索相关内容。
+
+    与个人历史记忆（item_type='history'）分离，用于 RAG 场景下的运维标准/SOP 召回。
+    返回结果中的 text 已带「来源: 文件名」前缀（见 ingest_knowledge.py）。
+    """
+    if not query:
+        return []
+    try:
+        return vector_engine.search_similar(query, top_k=top_k, item_type='knowledge')
+    except Exception:
+        return []
 
 
 def get_session_context_for_rag(query: Optional[str] = None, max_entries: int = 10) -> List[Dict[str, Any]]:
