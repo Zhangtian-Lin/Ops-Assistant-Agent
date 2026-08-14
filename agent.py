@@ -263,17 +263,18 @@ def route_task(question: str) -> dict:
     from core import intent_parser
     intent = intent_parser.parse_intent(question, parse_action_and_object)
     action, obj = intent['action'], intent['object']
+    llm_args = intent.get('args') or {}
     # 安全审计是只读操作，即使请求中没有“检查”等关键词也应允许路由。
     if obj == 'audit':
         action = 'check'
     if obj == 'memory_request':
-        return {'tool': 'query_memory', 'args': {'query': question}}
+        return {'tool': 'query_memory', 'args': {'query': llm_args.get('query') or question}}
     if obj == 'memory_clear':
         return {'tool': 'clear_memory', 'args': {}}
     if obj == 'search':
-        return {'tool': 'search_files', 'args': {'query': question}}
+        return {'tool': 'search_files', 'args': {'query': llm_args.get('query') or question}}
     if obj == 'knowledge':
-        return {'tool': 'query_knowledge', 'args': {'query': question}}
+        return {'tool': 'query_knowledge', 'args': {'query': llm_args.get('query') or question}}
     if action != 'check':
         return {'tool': 'none', 'message': '当前仅支持查询类型操作', 'args': {}}
     if obj == 'cpu':
@@ -282,20 +283,21 @@ def route_task(question: str) -> dict:
         return {'tool': 'check_memory', 'args': {}}
     if obj == 'disk_distribution':
         m = re.search(r'([a-zA-Z])盘', question.lower())
-        path_arg = f"{m.group(1).upper()}:\\" if m else '/'
+        path_arg = llm_args.get('path') or (f"{m.group(1).upper()}:\\" if m else '/')
         return {'tool': 'analyze_disk_distribution', 'args': {'path': path_arg}}
     if obj == 'disk':
         m = re.search(r'([a-zA-Z])盘', question.lower())
-        path_arg = f"{m.group(1).upper()}:\\" if m else '/'
+        path_arg = llm_args.get('path') or (f"{m.group(1).upper()}:\\" if m else '/')
         return {'tool': 'check_disk', 'args': {'path': path_arg}}
     if obj == 'service':
-        return {'tool': 'check_service', 'args': {'service_name': extract_service_name(question) or 'nginx'}}
+        service_name = llm_args.get('service_name') or extract_service_name(question) or 'nginx'
+        return {'tool': 'check_service', 'args': {'service_name': service_name}}
     if obj == 'audit':
         m = re.search(r'["\']([^"\']+)["\']', question)
         # 支持从整句提取路径模式，若有盘符等
         if not m:
             m = re.search(r'([a-zA-Z]:\\[a-zA-Z0-9_\-\\. ]+)', question)
-        path_arg = m.group(1) if m else '.'
+        path_arg = llm_args.get('path') or (m.group(1) if m else '.')
         return {'tool': 'audit_skill', 'args': {'path': path_arg}}
     return {'tool': 'none', 'message': '没有匹配到工具', 'args': {}}
 

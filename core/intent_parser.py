@@ -29,9 +29,23 @@ INTENT_OBJECTS = [
 
 INTENT_ACTIONS = ['check', 'control', 'none']
 
+# 各 object 允许的参数字段：用于 LLM 填参 + 结果过滤（多余字段一律丢弃）
+INTENT_ARGS_SCHEMA = {
+    'cpu': [],
+    'memory': [],
+    'memory_clear': [],
+    'disk': ['path'],
+    'disk_distribution': ['path'],
+    'service': ['service_name'],
+    'search': ['query'],
+    'audit': ['path'],
+    'knowledge': ['query'],
+    'memory_request': ['query'],
+}
+
 INTENT_SYSTEM_PROMPT = (
     "你是运维 Agent 的意图解析器。把用户的指令解析成 JSON，只输出 JSON，不要任何解释。\n"
-    "输出格式：{\"action\": \"<check|control|none>\", \"object\": \"<类型>\", \"args\": {}}\n"
+    "输出格式：{\"action\": \"<check|control|none>\", \"object\": \"<类型>\", \"args\": {<参数>}}\n"
     "可选 object 类型：cpu, memory, disk, disk_distribution, service, search, audit, knowledge, memory_request, memory_clear\n"
     "映射规则：\n"
     "- 查询/检查 CPU → check + cpu；内存 → check + memory；磁盘 → check + disk；磁盘空间分布 → check + disk_distribution\n"
@@ -41,7 +55,13 @@ INTENT_SYSTEM_PROMPT = (
     "- 询问运维标准/规范/SOP/手册/怎么排查 → knowledge\n"
     "- 回顾/查询历史记忆 → memory_request\n"
     "- 清空/重置记忆 → memory_clear\n"
-    "- 无法判断 → action=check 之外的 none，object 留空字符串\n"
+    "- 无法判断 → action 填 none，object 留空字符串\n"
+    "args 按 object 类型填写（无则 {})：\n"
+    "- disk / disk_distribution：{\"path\": \"盘符路径，如 C:\\\\\"}\n"
+    "- service：{\"service_name\": \"服务名，如 nginx\"}\n"
+    "- search / knowledge / memory_request：{\"query\": \"提炼后的检索关键词\"}\n"
+    "- audit：{\"path\": \"目标目录或文件路径\"}\n"
+    "- 其余类型：{}\n"
 )
 
 
@@ -102,9 +122,14 @@ def parse_intent(query: str, rule_parser: Callable) -> Dict[str, Any]:
     if isinstance(parsed, dict):
         action = parsed.get('action')
         obj = parsed.get('object')
-        args = parsed.get('args') or {}
+        args = parsed.get('args')
         if obj in INTENT_OBJECTS and (action in INTENT_ACTIONS or action is None):
-            return {'action': action, 'object': obj, 'args': args, 'source': 'llm'}
+            # 只保留 schema 声明的参数字段，过滤 LLM 塞进来的多余字段（第一道防线）
+            clean_args: Dict[str, Any] = {}
+            if isinstance(args, dict):
+                allowed = set(INTENT_ARGS_SCHEMA.get(obj, []))
+                clean_args = {k: v for k, v in args.items() if k in allowed}
+            return {'action': action, 'object': obj, 'args': clean_args, 'source': 'llm'}
 
     # 回退规则解析
     try:
