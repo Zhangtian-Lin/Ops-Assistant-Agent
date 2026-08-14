@@ -220,6 +220,10 @@ def parse_action_and_object(question: str) -> Tuple[Optional[str], Optional[str]
         obj = 'knowledge'
     elif any(w in q for w in ['安全', '扫描', '审计', 'scan', 'audit', 'security']):
         obj = 'audit'
+    elif any(w in q for w in ['审批', '待批准', '待处理', 'pending']):
+        obj = 'list_approvals'
+    elif any(w in q for w in ['批准', '同意', 'approve']):
+        obj = 'approve'
     # 再判断对象实体
     elif 'cpu' in q or '处理器' in q:
         obj = 'cpu'
@@ -259,6 +263,17 @@ def clear_memory() -> dict:
     return {'status': 'pending_approval', 'request_id': req.get('request_id')}
 
 
+def list_approvals() -> dict:
+    all_reqs = memory.list_pending_approvals()
+    pending = [p for p in all_reqs if p.get('status') == 'pending']
+    return {'status': 'ok', 'pending': pending, 'pending_count': len(pending)}
+
+
+def approve_request_tool(request_id: str) -> dict:
+    result = memory.approve_request(request_id, approver='user')
+    return {'status': 'ok', 'request_id': request_id, 'approval': result}
+
+
 def route_task(question: str) -> dict:
     from core import intent_parser
     intent = intent_parser.parse_intent(question, parse_action_and_object)
@@ -275,6 +290,12 @@ def route_task(question: str) -> dict:
         return {'tool': 'search_files', 'args': {'query': llm_args.get('query') or question}}
     if obj == 'knowledge':
         return {'tool': 'query_knowledge', 'args': {'query': llm_args.get('query') or question}}
+    if obj == 'list_approvals':
+        return {'tool': 'list_approvals', 'args': {}}
+    if obj == 'approve':
+        m = re.search(r'(apr-[A-Za-z0-9]+)', question)
+        request_id = llm_args.get('request_id') or (m.group(1) if m else '')
+        return {'tool': 'approve_request_tool', 'args': {'request_id': request_id}}
     if action != 'check':
         return {'tool': 'none', 'message': '当前仅支持查询类型操作', 'args': {}}
     if obj == 'cpu':
@@ -319,6 +340,13 @@ def validate_args(tool_name: str, args: dict) -> Tuple[bool, str, dict]:
         return (True, '', {'query': query}) if is_safe_text(query) else (False, '查询关键词不安全', {})
     if tool_name == 'clear_memory':
         return True, '', {}
+    if tool_name == 'list_approvals':
+        return True, '', {}
+    if tool_name == 'approve_request_tool':
+        request_id = args.get('request_id', '')
+        if re.match(r'^apr-[A-Za-z0-9]+$', request_id):
+            return True, '', {'request_id': request_id}
+        return False, '非法的审批请求 ID', {}
     if tool_name in {'check_cpu', 'check_memory'}:
         return True, '', {}
     return False, '不支持的工具', {}
@@ -362,7 +390,19 @@ TOOL_FUNCS = {
     'query_memory': query_memory,
     'query_knowledge': query_knowledge,
     'clear_memory': clear_memory,
+    'list_approvals': list_approvals,
+    'approve_request_tool': approve_request_tool,
 }
+
+
+def check_pending_approvals() -> None:
+    """检查是否有待审批请求，若有则主动提示。"""
+    pending = memory.list_pending_approvals()
+    active = [p for p in pending if p.get('status') == 'pending']
+    if active:
+        print(f'\n⚠️ 有 {len(active)} 条待审批请求待处理：')
+        for p in active:
+            print(f"  - {p.get('request_id')}  ({p.get('action')})")
 
 
 def safe_input(prompt_text: str) -> str:
@@ -400,6 +440,7 @@ if __name__ == '__main__':
     print('示例：检查 CPU、检查内存、检查磁盘、检查 nginx 服务、回顾一下之前网页服务器的情况')
     print('输入 exit 退出程序')
     print('===========================================================')
+    check_pending_approvals()
     try:
         while True:
             q = safe_input('\n请输入指令：')
@@ -410,5 +451,6 @@ if __name__ == '__main__':
                 break
             res = handle_user_query(q)
             print('回应：', res)
+            check_pending_approvals()
     except (KeyboardInterrupt, EOFError):
         print('\n系统已退出。')

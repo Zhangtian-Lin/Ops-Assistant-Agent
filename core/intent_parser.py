@@ -25,6 +25,8 @@ INTENT_OBJECTS = [
     'knowledge',
     'memory_request',
     'memory_clear',
+    'approve',
+    'list_approvals',
 ]
 
 INTENT_ACTIONS = ['check', 'control', 'none']
@@ -41,6 +43,8 @@ INTENT_ARGS_SCHEMA = {
     'audit': ['path'],
     'knowledge': ['query'],
     'memory_request': ['query'],
+    'approve': ['request_id'],
+    'list_approvals': [],
 }
 
 INTENT_SYSTEM_PROMPT = (
@@ -55,12 +59,15 @@ INTENT_SYSTEM_PROMPT = (
     "- 询问运维标准/规范/SOP/手册/怎么排查 → knowledge\n"
     "- 回顾/查询历史记忆 → memory_request\n"
     "- 清空/重置记忆 → memory_clear\n"
+    "- 批准某个审批请求 → approve\n"
+    "- 查看待审批列表 → list_approvals\n"
     "- 无法判断 → action 填 none，object 留空字符串\n"
     "args 按 object 类型填写（无则 {})：\n"
     "- disk / disk_distribution：{\"path\": \"盘符路径，如 C:\\\\\"}\n"
     "- service：{\"service_name\": \"服务名，如 nginx\"}\n"
     "- search / knowledge / memory_request：{\"query\": \"提炼后的检索关键词\"}\n"
     "- audit：{\"path\": \"目标目录或文件路径\"}\n"
+    "- approve：{\"request_id\": \"审批请求 ID，如 apr-xxx\"}\n"
     "- 其余类型：{}\n"
 )
 
