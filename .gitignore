@@ -23,3 +23,6 @@ Thumbs.db
 # Memory persistence
 memory/
 data/memory/
+
+# Temp git clone (可手动删除)
+.git_clean/
