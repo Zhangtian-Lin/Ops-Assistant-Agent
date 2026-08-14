@@ -269,9 +269,31 @@ def list_approvals() -> dict:
     return {'status': 'ok', 'pending': pending, 'pending_count': len(pending)}
 
 
+def _execute_clear_session_history(details: dict) -> dict:
+    return memory.perform_clear_session_history()
+
+
+# 审批动作 → 执行函数（批准后真正执行什么）。执行函数统一签名 func(details) -> dict
+APPROVAL_EXECUTORS = {
+    'clear_session_history': _execute_clear_session_history,
+    # 以后加动作，就往这里加一行，例如：
+    # 'restart_service': _execute_restart_service,
+}
+
+
 def approve_request_tool(request_id: str) -> dict:
     result = memory.approve_request(request_id, approver='user')
-    return {'status': 'ok', 'request_id': request_id, 'approval': result}
+    if result.get('status') != 'approved':
+        return {'status': 'ok', 'request_id': request_id, 'approval': result}
+
+    action = result['action']
+    executor = APPROVAL_EXECUTORS.get(action)
+    if executor is None:
+        return {'status': 'ok', 'request_id': request_id,
+                'approval': {'status': 'unknown_action', 'action': action}}
+
+    exec_result = executor(result.get('details', {}))
+    return {'status': 'ok', 'request_id': request_id, 'approval': exec_result}
 
 
 def route_task(question: str) -> dict:

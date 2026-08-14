@@ -289,10 +289,12 @@ def approve_request(request_id: str, approver: Optional[str] = None) -> Dict[str
             req['approved_at'] = datetime.utcnow().isoformat() + 'Z'
             req['approver'] = approver
             _save_pending_approvals()
-            # perform the requested action
-            if req.get('action') == 'clear_session_history':
-                return perform_clear_session_history()
-            return {'status': 'unknown_action'}
+            # 只做"批准"状态变更，返回动作名+参数；具体执行由上层（agent）查表分发
+            return {
+                'status': 'approved',
+                'action': req.get('action'),
+                'details': req.get('details', {}),
+            }
     return {'status': 'not_found'}
 
 
