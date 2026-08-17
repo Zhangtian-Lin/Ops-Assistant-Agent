@@ -25,7 +25,9 @@ INTENT_OBJECTS = [
     'knowledge',
     'memory_request',
     'memory_clear',
+    'network',
     'approve',
+    'cancel',
     'list_approvals',
 ]
 
@@ -36,6 +38,7 @@ INTENT_ARGS_SCHEMA = {
     'cpu': [],
     'memory': [],
     'memory_clear': [],
+    'network': ['query'],
     'disk': ['path'],
     'disk_distribution': ['path'],
     'service': ['service_name'],
@@ -43,31 +46,35 @@ INTENT_ARGS_SCHEMA = {
     'audit': ['path'],
     'knowledge': ['query'],
     'memory_request': ['query'],
-    'approve': ['request_id'],
+    'approve': ['request_id', 'confirmation'],
+    'cancel': ['request_id'],
     'list_approvals': [],
 }
 
 INTENT_SYSTEM_PROMPT = (
     "你是运维 Agent 的意图解析器。把用户的指令解析成 JSON，只输出 JSON，不要任何解释。\n"
     "输出格式：{\"action\": \"<check|control|none>\", \"object\": \"<类型>\", \"args\": {<参数>}}\n"
-    "可选 object 类型：cpu, memory, disk, disk_distribution, service, search, audit, knowledge, memory_request, memory_clear\n"
+    "可选 object 类型：cpu, memory, disk, disk_distribution, service, network, search, audit, knowledge, memory_request, memory_clear, approve, cancel, list_approvals\n"
     "映射规则：\n"
     "- 查询/检查 CPU → check + cpu；内存 → check + memory；磁盘 → check + disk；磁盘空间分布 → check + disk_distribution\n"
     "- 查询服务状态 → check + service\n"
+    "- 查询网络、本机网卡、DNS、TCP 或 TLS → check + network\n"
     "- 要求搜索文件 → search\n"
     "- 要求安全扫描/审计 → audit\n"
     "- 询问运维标准/规范/SOP/手册/怎么排查 → knowledge\n"
     "- 回顾/查询历史记忆 → memory_request\n"
     "- 清空/重置记忆 → memory_clear\n"
     "- 批准某个审批请求 → approve\n"
+    "- 取消或撤销某个审批请求 → cancel\n"
     "- 查看待审批列表 → list_approvals\n"
     "- 无法判断 → action 填 none，object 留空字符串\n"
     "args 按 object 类型填写（无则 {})：\n"
     "- disk / disk_distribution：{\"path\": \"盘符路径，如 C:\\\\\"}\n"
     "- service：{\"service_name\": \"服务名，如 nginx\"}\n"
-    "- search / knowledge / memory_request：{\"query\": \"提炼后的检索关键词\"}\n"
+    "- search / knowledge / memory_request / network：{\"query\": \"提炼后的检索关键词\"}\n"
     "- audit：{\"path\": \"目标目录或文件路径\"}\n"
     "- approve：{\"request_id\": \"审批请求 ID，如 apr-xxx\"}\n"
+    "- cancel：{\"request_id\": \"审批请求 ID，如 apr-xxx\"}\n"
     "- 其余类型：{}\n"
 )
 

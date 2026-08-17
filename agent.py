@@ -2,17 +2,34 @@ import os
 import re
 import shutil
 import subprocess
+import getpass
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, Tuple, Dict, Any
 
 from core import memory
+from core.action_policy import get_tool_policy
+from core.broker import BrokerClient
+from core.network import check_dns, check_local_state, check_tcp, check_tls
+from core.windows_checks import CHECKS as WINDOWS_CHECKS, run_check as run_windows_check
 
 MAX_ARG_LENGTH = 128
 SAFE_SERVICE_NAMES = {'nginx', 'mysql', 'redis', 'docker', 'ssh', 'postgresql', 'mongodb', 'httpd'}
 SEARCH_EXTENSIONS = {'.py', '.txt', '.md', '.log', '.conf', '.ini', '.json'}
-DANGEROUS_TOOLS = {'restart_service', 'execute_shell'}
 WORKSPACE_ROOT = Path(__file__).resolve().parent
+
+SYSTEM_CHECK_KEYWORDS = (
+    ('gpu', ('gpu', '\u663e\u5361', '\u663e\u5b58')),
+    ('disk_health', ('smart', '\u786c\u76d8\u5065\u5eb7', '\u78c1\u76d8\u5065\u5eb7', '\u574f\u6247\u533a', '\u78c1\u76d8\u98ce\u9669', '\u786c\u76d8\u98ce\u9669')),
+    ('processes', ('process', '\u8fdb\u7a0b')),
+    ('system_inventory', ('\u51e0\u4e2a\u7cfb\u7edf', '\u64cd\u4f5c\u7cfb\u7edf', '\u542f\u52a8\u9879', 'windows version')),
+    ('security_baseline', ('defender', '\u9632\u706b\u5899', '\u5b89\u5168\u57fa\u7ebf', 'windows update', '\u8865\u4e01')),
+    ('event_errors', ('event log', '\u4e8b\u4ef6\u65e5\u5fd7', '\u7cfb\u7edf\u65e5\u5fd7', '\u9519\u8bef\u65e5\u5fd7')),
+    ('driver_issues', ('driver', '\u9a71\u52a8\u5f02\u5e38', '\u9a71\u52a8\u7a0b\u5e8f')),
+    ('scheduled_tasks', ('scheduled task', '\u8ba1\u5212\u4efb\u52a1')),
+    ('user_sessions', ('query user', '\u7528\u6237\u4f1a\u8bdd', '\u5df2\u767b\u5f55\u7528\u6237')),
+    ('power', ('battery', '\u7535\u6c60', '\u7535\u6e90\u8ba1\u5212')),
+)
 
 
 def is_safe_text(value: str) -> bool:
@@ -220,6 +237,8 @@ def parse_action_and_object(question: str) -> Tuple[Optional[str], Optional[str]
         obj = 'knowledge'
     elif any(w in q for w in ['安全', '扫描', '审计', 'scan', 'audit', 'security']):
         obj = 'audit'
+    elif any(w in q for w in ['取消审批', '撤销审批', '取消待批', '撤销待批', 'cancel approval']):
+        obj = 'cancel'
     elif any(w in q for w in ['审批', '待批准', '待处理', 'pending']):
         obj = 'list_approvals'
     elif any(w in q for w in ['批准', '同意', 'approve']):
@@ -235,6 +254,8 @@ def parse_action_and_object(question: str) -> Tuple[Optional[str], Optional[str]
         obj = 'disk'
     elif '服务' in q or 'service' in q or 'nginx' in q:
         obj = 'service'
+    elif any(w in q for w in ['network', 'dns', 'tcp', 'tls', '\u7f51\u7edc', '\u7f51\u5361', '\u7aef\u53e3', '\u8bc1\u4e66']):
+        obj = 'network'
     else:
         obj = None
     return action, obj
@@ -257,46 +278,119 @@ def query_knowledge(query: str) -> dict:
     return {'status': 'ok', 'source': 'knowledge', 'knowledge_matches': matches}
 
 
+def check_network(query: str) -> dict:
+    """Route a read-only network question; all remote targets are policy-gated."""
+    lowered = query.lower()
+    if not any(word in lowered for word in ('dns', 'tcp', 'tls', 'network', '\u7f51\u7edc', '\u7f51\u5361', '\u7aef\u53e3', '\u8bc1\u4e66')):
+        return check_local_state()
+    if not any(word in lowered for word in ('dns', 'tcp', 'tls', '\u7aef\u53e3', '\u8bc1\u4e66')):
+        return check_local_state()
+    target_match = re.search(r'(?<![\w-])((?:[A-Za-z0-9-]+\.)+[A-Za-z]{2,}|(?:\d{1,3}\.){3}\d{1,3})(?![\w-])', query)
+    if not target_match:
+        return {'status': 'invalid_request', 'error': 'Remote DNS/TCP/TLS checks require an explicit hostname or IP address.'}
+    target = target_match.group(1)
+    if 'dns' in lowered:
+        return check_dns(target)
+    port_match = re.search(r'(?<!\d)([1-9]\d{0,4})(?!\d)', query)
+    port = int(port_match.group(1)) if port_match else 443 if 'tls' in lowered or '\u8bc1\u4e66' in lowered else None
+    if port is None or port > 65535:
+        return {'status': 'invalid_request', 'error': 'TCP checks require a port from 1 to 65535.'}
+    return check_tls(target, port) if 'tls' in lowered or '\u8bc1\u4e66' in lowered else check_tcp(target, port)
+
+
+def system_check_category(question: str) -> Optional[str]:
+    lowered = question.lower()
+    for category, keywords in SYSTEM_CHECK_KEYWORDS:
+        if any(keyword in lowered for keyword in keywords):
+            return category
+    # Treat a disk-failure/risk question as health rather than a capacity query.
+    if ('\u78c1\u76d8' in lowered or 'disk' in lowered) and any(keyword in lowered for keyword in ('\u98ce\u9669', '\u6545\u969c', '\u5065\u5eb7', 'health', 'failure')):
+        return 'disk_health'
+    return None
+
+
+def check_system(category: str) -> dict:
+    return run_windows_check(category)
+
+
 def clear_memory() -> dict:
-    # create a pending approval to clear memory
-    req = memory.request_clear_session_history(requester='agent')
-    return {'status': 'pending_approval', 'request_id': req.get('request_id')}
+    response = BrokerClient().call('create', action='clear_session_history')
+    if not response.get('ok'):
+        return {'status': 'broker_unavailable', 'error': response.get('error')}
+    request = response['result']['request']
+    request_number = _request_number(request['request_id'])
+    return {
+        'status': 'pending_approval',
+        'request_number': request_number,
+        'expires_at': request['expires_at'],
+        'action': request['action'],
+        'next_step': f'输入“批准 {request_number}”执行，或“取消 {request_number}”撤销。',
+    }
+
+
+def _pending_requests() -> list:
+    response = BrokerClient().call('list')
+    return response.get('requests', []) if response.get('ok') else []
+
+
+def _request_number(request_id: str) -> Optional[int]:
+    """Map a displayed short number to the current pending-request snapshot."""
+    for number, request in enumerate(_pending_requests(), start=1):
+        if request.get('request_id') == request_id:
+            return number
+    return None
+
+
+def _resolve_request_reference(reference: str) -> tuple[str, Optional[int]]:
+    """Resolve a full ID or a displayed 1-based number to the broker's real ID."""
+    if re.fullmatch(r'apr-[A-Za-z0-9_-]{16,}', reference):
+        return reference, _request_number(reference)
+    if re.fullmatch(r'[1-9][0-9]*', reference):
+        pending = _pending_requests()
+        number = int(reference)
+        if number <= len(pending):
+            return pending[number - 1]['request_id'], number
+    return '', None
 
 
 def list_approvals() -> dict:
-    all_reqs = memory.list_pending_approvals()
-    pending = [p for p in all_reqs if p.get('status') == 'pending']
-    return {'status': 'ok', 'pending': pending, 'pending_count': len(pending)}
+    response = BrokerClient().call('list')
+    if not response.get('ok'):
+        return {'status': 'broker_unavailable', 'error': response.get('error')}
+    pending = response.get('requests', [])
+    return {
+        'status': 'ok',
+        'pending': [
+            {
+                'number': number,
+                'action': item.get('action'),
+                'expires_at': item.get('expires_at'),
+            }
+            for number, item in enumerate(pending, start=1)
+        ],
+        'pending_count': len(pending),
+        'hint': '输入“批准 编号”执行，或“取消 编号”撤销。',
+    }
 
 
-def _execute_clear_session_history(details: dict) -> dict:
-    return memory.perform_clear_session_history()
+def approve_request_tool(request_id: str, confirmation: str = '', request_number: Optional[int] = None) -> dict:
+    response = BrokerClient().call('approve', request_id=request_id, confirmation=confirmation)
+    if not response.get('ok'):
+        return {'status': 'approval_rejected', 'request_number': request_number, 'approval': response}
+    return {'status': 'ok', 'request_number': request_number, 'message': '审批已执行。'}
 
 
-# 审批动作 → 执行函数（批准后真正执行什么）。执行函数统一签名 func(details) -> dict
-APPROVAL_EXECUTORS = {
-    'clear_session_history': _execute_clear_session_history,
-    # 以后加动作，就往这里加一行，例如：
-    # 'restart_service': _execute_restart_service,
-}
-
-
-def approve_request_tool(request_id: str) -> dict:
-    result = memory.approve_request(request_id, approver='user')
-    if result.get('status') != 'approved':
-        return {'status': 'ok', 'request_id': request_id, 'approval': result}
-
-    action = result['action']
-    executor = APPROVAL_EXECUTORS.get(action)
-    if executor is None:
-        return {'status': 'ok', 'request_id': request_id,
-                'approval': {'status': 'unknown_action', 'action': action}}
-
-    exec_result = executor(result.get('details', {}))
-    return {'status': 'ok', 'request_id': request_id, 'approval': exec_result}
+def cancel_request_tool(request_id: str, request_number: Optional[int] = None) -> dict:
+    response = BrokerClient().call('cancel', request_id=request_id)
+    if not response.get('ok'):
+        return {'status': 'cancellation_rejected', 'request_number': request_number, 'cancellation': response}
+    return {'status': 'ok', 'request_number': request_number, 'message': '审批请求已取消。'}
 
 
 def route_task(question: str) -> dict:
+    category = system_check_category(question)
+    if category:
+        return {'tool': 'check_system', 'args': {'category': category}}
     from core import intent_parser
     intent = intent_parser.parse_intent(question, parse_action_and_object)
     action, obj = intent['action'], intent['object']
@@ -312,12 +406,27 @@ def route_task(question: str) -> dict:
         return {'tool': 'search_files', 'args': {'query': llm_args.get('query') or question}}
     if obj == 'knowledge':
         return {'tool': 'query_knowledge', 'args': {'query': llm_args.get('query') or question}}
+    if obj == 'network':
+        return {'tool': 'check_network', 'args': {'query': llm_args.get('query') or question}}
     if obj == 'list_approvals':
         return {'tool': 'list_approvals', 'args': {}}
     if obj == 'approve':
-        m = re.search(r'(apr-[A-Za-z0-9]+)', question)
-        request_id = llm_args.get('request_id') or (m.group(1) if m else '')
-        return {'tool': 'approve_request_tool', 'args': {'request_id': request_id}}
+        m = re.search(r'(apr-[A-Za-z0-9_-]+)', question)
+        number_match = re.search(r'(?<!\d)([1-9]\d*)(?!\d)', question)
+        reference = str(llm_args.get('request_id') or (m.group(1) if m else (number_match.group(1) if number_match else '')))
+        request_id, request_number = _resolve_request_reference(reference)
+        if not request_id:
+            return {'tool': 'none', 'message': '找不到该待审批编号；请先输入“查看待审批”。', 'args': {}}
+        confirmation = f'APPROVE {request_id}'
+        return {'tool': 'approve_request_tool', 'args': {'request_id': request_id, 'confirmation': confirmation, 'request_number': request_number}}
+    if obj == 'cancel':
+        m = re.search(r'(apr-[A-Za-z0-9_-]+)', question)
+        number_match = re.search(r'(?<!\d)([1-9]\d*)(?!\d)', question)
+        reference = str(llm_args.get('request_id') or (m.group(1) if m else (number_match.group(1) if number_match else '')))
+        request_id, request_number = _resolve_request_reference(reference)
+        if not request_id:
+            return {'tool': 'none', 'message': '找不到该待审批编号；请先输入“查看待审批”。', 'args': {}}
+        return {'tool': 'cancel_request_tool', 'args': {'request_id': request_id, 'request_number': request_number}}
     if action != 'check':
         return {'tool': 'none', 'message': '当前仅支持查询类型操作', 'args': {}}
     if obj == 'cpu':
@@ -360,27 +469,38 @@ def validate_args(tool_name: str, args: dict) -> Tuple[bool, str, dict]:
     if tool_name in {'query_memory', 'query_knowledge'}:
         query = args.get('query', '')
         return (True, '', {'query': query}) if is_safe_text(query) else (False, '查询关键词不安全', {})
+    if tool_name == 'check_network':
+        query = args.get('query', '')
+        return (True, '', {'query': query}) if is_safe_text(query) else (False, '网络查询参数不安全', {})
+    if tool_name == 'check_system':
+        category = args.get('category', '')
+        return (True, '', {'category': category}) if category in WINDOWS_CHECKS else (False, '不支持的系统检查类别', {})
     if tool_name == 'clear_memory':
         return True, '', {}
     if tool_name == 'list_approvals':
         return True, '', {}
-    if tool_name == 'approve_request_tool':
+    if tool_name in {'approve_request_tool', 'cancel_request_tool'}:
         request_id = args.get('request_id', '')
-        if re.match(r'^apr-[A-Za-z0-9]+$', request_id):
-            return True, '', {'request_id': request_id}
+        if re.match(r'^apr-[A-Za-z0-9_-]{16,}$', request_id):
+            request_number = args.get('request_number')
+            if request_number is not None and (not isinstance(request_number, int) or request_number < 1):
+                return False, '非法的审批请求编号', {}
+            if tool_name == 'approve_request_tool':
+                confirmation = args.get('confirmation', '')
+                return True, '', {'request_id': request_id, 'confirmation': confirmation if isinstance(confirmation, str) else '', 'request_number': request_number}
+            return True, '', {'request_id': request_id, 'request_number': request_number}
         return False, '非法的审批请求 ID', {}
     if tool_name in {'check_cpu', 'check_memory'}:
         return True, '', {}
     return False, '不支持的工具', {}
 
 
-def approve_tool_call(tool_name: str, args: dict) -> bool:
-    return tool_name not in DANGEROUS_TOOLS
-
-
 def safe_execute(tool_name: str, args: dict) -> dict:
-    if not approve_tool_call(tool_name, args):
-        return {'status': 'blocked', 'reason': '危险操作需要审批'}
+    policy = get_tool_policy(tool_name)
+    if policy is None:
+        return {'status': 'unsupported_tool'}
+    if policy['mode'] not in {'direct', 'request_approval', 'approval_control'}:
+        return {'status': 'blocked', 'reason': 'Tool policy does not permit execution'}
     func = TOOL_FUNCS.get(tool_name)
     return func(**args) if func else {'status': 'unsupported_tool'}
 
@@ -407,6 +527,8 @@ TOOL_FUNCS = {
     'check_disk': check_disk,
     'analyze_disk_distribution': analyze_disk_distribution,
     'check_service': check_service,
+    'check_network': check_network,
+    'check_system': check_system,
     'audit_skill': audit_skill,
     'search_files': search_files,
     'query_memory': query_memory,
@@ -414,17 +536,19 @@ TOOL_FUNCS = {
     'clear_memory': clear_memory,
     'list_approvals': list_approvals,
     'approve_request_tool': approve_request_tool,
+    'cancel_request_tool': cancel_request_tool,
 }
 
 
 def check_pending_approvals() -> None:
     """检查是否有待审批请求，若有则主动提示。"""
-    pending = memory.list_pending_approvals()
-    active = [p for p in pending if p.get('status') == 'pending']
+    response = BrokerClient().call('list')
+    active = response.get('requests', []) if response.get('ok') else []
     if active:
-        print(f'\n⚠️ 有 {len(active)} 条待审批请求待处理：')
-        for p in active:
-            print(f"  - {p.get('request_id')}  ({p.get('action')})")
+        # 保持 GBK 终端兼容：避免输出 Emoji 等非 GBK 字符。
+        print(f'\n有 {len(active)} 条待审批请求待处理：')
+        for number, p in enumerate(active, start=1):
+            print(f"  {number}. {p.get('action')}（输入“批准 {number}”或“取消 {number}”）")
 
 
 def safe_input(prompt_text: str) -> str:
@@ -437,6 +561,32 @@ def safe_input(prompt_text: str) -> str:
         return line.strip()
     except Exception:
         return input(prompt_text).strip()
+
+
+def setup_security_mode_if_needed() -> None:
+    """Offer first-run mode setup without silently enabling a high-risk mode."""
+    from core.security_mode import is_configured
+
+    if is_configured():
+        return
+    print('\nSecurity mode has not been configured. High-risk actions remain unavailable until setup finishes.')
+    print('Choose: 1) single-user controlled mode  2) multi-user separation  (Enter to skip)')
+    choice = safe_input('Security mode: ')
+    if not choice:
+        return
+    from scripts.initialize_security import initialize_security
+
+    try:
+        if choice == '1':
+            print(initialize_security('single_user_controlled'))
+        elif choice == '2':
+            operator_sid = safe_input('Operator Windows SID: ')
+            approver_sid = safe_input('Approver Windows SID: ')
+            print(initialize_security('multi_user_separation', operator_sid, approver_sid))
+        else:
+            print('Skipped: choose 1 or 2 at the next startup, or run scripts/initialize_security.py.')
+    except (ValueError, FileExistsError) as exc:
+        print(f'Security setup not completed: {exc}')
 
 
 if __name__ == '__main__':
@@ -462,6 +612,7 @@ if __name__ == '__main__':
     print('示例：检查 CPU、检查内存、检查磁盘、检查 nginx 服务、回顾一下之前网页服务器的情况')
     print('输入 exit 退出程序')
     print('===========================================================')
+    setup_security_mode_if_needed()
     check_pending_approvals()
     try:
         while True:

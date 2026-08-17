@@ -1,0 +1,13 @@
+# Copy to identity_policy.yaml with scripts/initialize_security.py.
+roles:
+  viewer:
+    permissions: [system.read, memory.read, knowledge.read]
+  operator:
+    permissions: [system.read, approval.create, approval.cancel_own]
+  approver:
+    permissions: [approval.read_pending, approval.approve, approval.cancel_any]
+  auditor:
+    permissions: [audit.read]
+  admin:
+    permissions: [identity.manage, policy.manage]
+principals: {}

@@ -1,0 +1,9 @@
+# External checks are denied until a local network_policy.yaml explicitly allows them.
+network:
+  allowed_hosts:
+    - api.internal.example
+    - 10.0.2.15
+  allowed_ports: [53, 443, 5432]
+  timeout_seconds: 5
+  allow_private_addresses: true
+  allow_public_addresses: false

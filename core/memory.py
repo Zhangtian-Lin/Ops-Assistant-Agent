@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from core import vector_engine
+from core import approvals
 
 MAX_SESSION_HISTORY = 50
 WORKSPACE_ROOT = Path(__file__).resolve().parent.parent
@@ -252,16 +253,17 @@ def _create_pending_request(action: str, details: Dict[str, Any]) -> Dict[str, A
 
 
 def list_pending_approvals() -> List[Dict[str, Any]]:
-    return list(PENDING_APPROVALS)
+    """Compatibility wrapper for callers that need all approval records."""
+    return approvals.list_requests(status=None)
 
 
 def request_clear_session_history(requester: Optional[str] = None) -> Dict[str, Any]:
-    """Create a pending approval request to clear session history.
-
-    Does NOT perform clearing. An approver must call `approve_request(request_id)`.
-    """
-    details = {'requester': requester}
-    return _create_pending_request('clear_session_history', details)
+    """Create a durable approval request; this function never clears memory itself."""
+    return approvals.create_request(
+        'clear_session_history',
+        {'requester': requester or 'unknown'},
+        requester_id=requester or 'unknown',
+    )
 
 
 def perform_clear_session_history() -> Dict[str, Any]:
@@ -282,20 +284,8 @@ def perform_clear_session_history() -> Dict[str, Any]:
 
 
 def approve_request(request_id: str, approver: Optional[str] = None) -> Dict[str, Any]:
-    for req in PENDING_APPROVALS:
-        if req.get('request_id') == request_id and req.get('status') == 'pending':
-            # mark approved
-            req['status'] = 'approved'
-            req['approved_at'] = datetime.utcnow().isoformat() + 'Z'
-            req['approver'] = approver
-            _save_pending_approvals()
-            # 只做"批准"状态变更，返回动作名+参数；具体执行由上层（agent）查表分发
-            return {
-                'status': 'approved',
-                'action': req.get('action'),
-                'details': req.get('details', {}),
-            }
-    return {'status': 'not_found'}
+    """Compatibility wrapper; execution is intentionally handled by the Agent layer."""
+    return approvals.approve_request(request_id, approver or 'unknown')
 
 
 
@@ -635,4 +625,3 @@ _load_session_history()
 _load_session_summary()
 _load_session_index()
 _load_session_abstracts()
-_load_pending_approvals()

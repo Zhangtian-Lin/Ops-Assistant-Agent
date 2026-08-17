@@ -1,0 +1,3 @@
+# Copy to security_mode.yaml with scripts/initialize_security.py.
+mode: single_user_controlled
+policy_version: "1"

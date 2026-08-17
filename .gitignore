@@ -23,6 +23,10 @@ Thumbs.db
 # Memory persistence
 memory/
 data/memory/
+data/runtime/
+config/security_mode.yaml
+config/identity_policy.yaml
+config/network_policy.yaml
 
 # Temp git clone (可手动删除)
 .git_clean/
