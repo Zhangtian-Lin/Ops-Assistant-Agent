@@ -3,14 +3,19 @@ import re
 import shutil
 import subprocess
 import getpass
+import uuid
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, Tuple, Dict, Any
 
 from core import memory
-from core.action_policy import get_tool_policy
 from core.broker import BrokerClient
+from core.identity import get_current_principal
 from core.network import check_dns, check_local_state, check_tcp, check_tls
+from core.security_mode import build_context, permissions_for
+from core.tools.catalog import build_tool_registry
+from core.tools.executor import ToolExecutor
+from core.tools.models import ToolRequest
 from core.windows_checks import CHECKS as WINDOWS_CHECKS, run_check as run_windows_check
 
 MAX_ARG_LENGTH = 128
@@ -223,7 +228,12 @@ def search_files(query: str) -> dict:
 
 def parse_action_and_object(question: str) -> Tuple[Optional[str], Optional[str]]:
     q = question.lower()
-    action = 'check' if any(w in q for w in ['查', '查看', '查询', '检测', '看', 'check', 'inspect', '分布', '详情', '占用']) else 'control' if any(w in q for w in ['重启', 'restart', '启动', '停止', 'stop']) else None
+    # Treat attempts to override policy or request arbitrary command execution as untrusted text,
+    # never as an instruction to a memory/search tool.
+    if any(phrase in q for phrase in ('忽略之前规则', '忽略所有规则', 'ignore previous rules', 'ignore all rules', '执行 powershell', '运行任意命令', 'arbitrary command')):
+        return None, None
+    performance_question = any(w in q for w in ['电脑卡', '系统卡', '运行慢', '响应慢', '有点卡', '变卡', '卡顿', 'lag', 'slow'])
+    action = 'check' if performance_question or any(w in q for w in ['查', '查看', '查询', '检测', '看', 'check', 'inspect', '分布', '详情', '占用']) else 'control' if any(w in q for w in ['重启', 'restart', '启动', '停止', 'stop']) else None
     # 先判断“明确意图词”（记忆/搜索/知识库/审计），避免被宽泛实体词（如“服务器”含“服务”）误抢
     if any(w in q for w in ['记忆', '回顾', '历史', '上次', '之前', 'summary', '总结']):
         # detect clear/reset requests explicitly
@@ -244,6 +254,9 @@ def parse_action_and_object(question: str) -> Tuple[Optional[str], Optional[str]
     elif any(w in q for w in ['批准', '同意', 'approve']):
         obj = 'approve'
     # 再判断对象实体
+    elif performance_question:
+        # A deterministic first diagnostic when no LLM is available. It stays read-only.
+        obj = 'cpu'
     elif 'cpu' in q or '处理器' in q:
         obj = 'cpu'
     elif '内存' in q or 'memory' in q:
@@ -387,12 +400,17 @@ def cancel_request_tool(request_id: str, request_number: Optional[int] = None) -
     return {'status': 'ok', 'request_number': request_number, 'message': '审批请求已取消。'}
 
 
-def route_task(question: str) -> dict:
+def route_task(question: str, capture: Optional[dict] = None) -> dict:
+    """Map an input to a registered tool request; capture is observability-only."""
     category = system_check_category(question)
     if category:
+        if capture is not None:
+            capture.update({'source': 'system_rule', 'intent': {'action': 'check', 'object': 'system', 'args': {'category': category}}})
         return {'tool': 'check_system', 'args': {'category': category}}
     from core import intent_parser
     intent = intent_parser.parse_intent(question, parse_action_and_object)
+    if capture is not None:
+        capture.update({'source': intent.get('source', 'unknown'), 'intent': {'action': intent.get('action'), 'object': intent.get('object'), 'args': intent.get('args') or {}}})
     action, obj = intent['action'], intent['object']
     llm_args = intent.get('args') or {}
     # 安全审计是只读操作，即使请求中没有“检查”等关键词也应允许路由。
@@ -495,33 +513,30 @@ def validate_args(tool_name: str, args: dict) -> Tuple[bool, str, dict]:
     return False, '不支持的工具', {}
 
 
-def safe_execute(tool_name: str, args: dict) -> dict:
-    policy = get_tool_policy(tool_name)
-    if policy is None:
-        return {'status': 'unsupported_tool'}
-    if policy['mode'] not in {'direct', 'request_approval', 'approval_control'}:
-        return {'status': 'blocked', 'reason': 'Tool policy does not permit execution'}
-    func = TOOL_FUNCS.get(tool_name)
-    return func(**args) if func else {'status': 'unsupported_tool'}
+def _current_permissions() -> tuple[str, ...]:
+    """Derive permissions from the authenticated OS identity; fail closed."""
+    try:
+        return tuple(permissions_for(build_context(get_current_principal())))
+    except Exception:
+        return ()
+
+
+def safe_execute(tool_name: str, args: dict, trace_id: Optional[str] = None) -> dict:
+    request = ToolRequest(
+        tool=tool_name,
+        arguments=args,
+        actor_permissions=_current_permissions(),
+        trace_id=trace_id or f"trace-{uuid.uuid4().hex}",
+    )
+    return TOOL_EXECUTOR.execute(request).to_dict()
 
 
 def handle_user_query(question: str) -> dict:
-    task = route_task(question)
-    if task['tool'] == 'none':
-        result = {'status': 'no_tool', 'message': task['message']}
-        memory.log_session_entry(question, task, result)
-        return result
-    ok, err, clean_args = validate_args(task['tool'], task['args'])
-    if not ok:
-        result = {'status': 'invalid_args', 'error': err}
-        memory.log_session_entry(question, task, result)
-        return result
-    result = safe_execute(task['tool'], clean_args)
-    memory.log_session_entry(question, task, result)
-    return result
+    """Compatibility entry point; the explicit runtime owns each task lifecycle."""
+    return AGENT_RUNTIME.handle(question)
 
 
-TOOL_FUNCS = {
+_TOOL_HANDLERS = {
     'check_cpu': check_cpu,
     'check_memory': check_memory,
     'check_disk': check_disk,
@@ -538,6 +553,23 @@ TOOL_FUNCS = {
     'approve_request_tool': approve_request_tool,
     'cancel_request_tool': cancel_request_tool,
 }
+
+_TOOL_VALIDATORS = {
+    name: (lambda args, tool_name=name: validate_args(tool_name, args))
+    for name in _TOOL_HANDLERS
+}
+TOOL_REGISTRY = build_tool_registry(_TOOL_HANDLERS, _TOOL_VALIDATORS)
+TOOL_EXECUTOR = ToolExecutor(TOOL_REGISTRY)
+
+# Runtime is deliberately created after the registry: it orchestrates the existing
+# router and executor but cannot bypass either the registry or Broker boundary.
+from core.runtime import AgentRuntime
+
+AGENT_RUNTIME = AgentRuntime(
+    router=route_task,
+    executor=lambda tool, args, trace_id: safe_execute(tool, args, trace_id),
+    session_logger=memory.log_session_entry,
+)
 
 
 def check_pending_approvals() -> None:

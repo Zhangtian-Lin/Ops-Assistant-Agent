@@ -1,0 +1,32 @@
+name: Feature request
+description: Propose a bounded capability with security and verification criteria.
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior and boundaries
+      description: State whether it is read-only, networked, or high-risk.
+    validations:
+      required: true
+  - type: textarea
+    id: security
+    attributes:
+      label: Security and approval impact
+      description: Explain why it cannot bypass the tool registry, policy, or Broker.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Acceptance tests / evidence
+      description: List the test and JSON evidence that will prove the behavior.
+    validations:
+      required: true

@@ -9,9 +9,9 @@
     LLM_MODEL     可选，默认 gpt-4o-mini
 """
 
-import json
-import os
 from typing import Any, Callable, Dict, Optional
+
+from core.llm import LLMClient
 
 # 意图对象全集：LLM prompt 与校验逻辑共用
 INTENT_OBJECTS = [
@@ -67,7 +67,8 @@ INTENT_SYSTEM_PROMPT = (
     "- 批准某个审批请求 → approve\n"
     "- 取消或撤销某个审批请求 → cancel\n"
     "- 查看待审批列表 → list_approvals\n"
-    "- 无法判断 → action 填 none，object 留空字符串\n"
+    "- 电脑卡顿、运行缓慢、响应慢，但没有更具体对象 → 先 check + cpu，作为第一项只读诊断\n"
+    "- 无法判断 → action 填 none，object 填 none\n"
     "args 按 object 类型填写（无则 {})：\n"
     "- disk / disk_distribution：{\"path\": \"盘符路径，如 C:\\\\\"}\n"
     "- service：{\"service_name\": \"服务名，如 nginx\"}\n"
@@ -78,48 +79,52 @@ INTENT_SYSTEM_PROMPT = (
     "- 其余类型：{}\n"
 )
 
-
-def _get_llm_config() -> Optional[Dict[str, str]]:
-    api_key = os.getenv('LLM_API_KEY') or os.getenv('OPENAI_API_KEY')
-    if not api_key:
-        return None
-    return {
-        'api_key': api_key,
-        'base_url': os.getenv('LLM_BASE_URL', 'https://api.openai.com/v1'),
-        'model': os.getenv('LLM_MODEL', 'gpt-4o-mini'),
-    }
+POLICY_OVERRIDE_MARKERS = (
+    "忽略之前规则", "忽略所有规则", "ignore previous rules", "ignore all rules",
+    "执行 powershell", "运行任意命令", "arbitrary command",
+)
 
 
-def parse_with_llm(query: str) -> Optional[Dict[str, Any]]:
-    """调用 LLM 解析意图，失败返回 None。"""
-    cfg = _get_llm_config()
-    if not cfg:
-        return None
-    try:
-        import requests
-        resp = requests.post(
-            f"{cfg['base_url'].rstrip('/')}/chat/completions",
-            headers={'Authorization': f"Bearer {cfg['api_key']}"},
-            json={
-                'model': cfg['model'],
-                'messages': [
-                    {'role': 'system', 'content': INTENT_SYSTEM_PROMPT},
-                    {'role': 'user', 'content': query},
-                ],
-                'temperature': 0,
+def is_policy_override_attempt(query: str) -> bool:
+    return any(marker in query.lower() for marker in POLICY_OVERRIDE_MARKERS)
+
+
+INTENT_JSON_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["action", "object", "args", "confidence"],
+    "properties": {
+        "action": {"type": "string", "enum": INTENT_ACTIONS},
+        "object": {"type": "string", "enum": INTENT_OBJECTS + ["none"]},
+        "args": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["query", "path", "service_name", "request_id", "confirmation"],
+            "properties": {
+                "query": {"type": ["string", "null"]},
+                "path": {"type": ["string", "null"]},
+                "service_name": {"type": ["string", "null"]},
+                "request_id": {"type": ["string", "null"]},
+                "confirmation": {"type": ["string", "null"]},
             },
-            timeout=10,
-        )
-        resp.raise_for_status()
-        content = resp.json()['choices'][0]['message']['content'].strip()
-        # 剥离可能的 ```json 围栏
-        if content.startswith('```'):
-            content = content.strip('`')
-            if content.lower().startswith('json'):
-                content = content[4:]
-        return json.loads(content)
-    except Exception:
+        },
+        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+    },
+}
+
+
+def parse_with_llm(query: str, client: Optional[LLMClient] = None) -> Optional[Dict[str, Any]]:
+    """Request a schema-bound intent. It can never authorize or call a tool."""
+    result = (client or LLMClient()).complete_json(INTENT_SYSTEM_PROMPT, query, INTENT_JSON_SCHEMA)
+    if not result.ok:
         return None
+    parsed = result.data
+    if not isinstance(parsed, dict):
+        return None
+    # Low-confidence semantic guesses should use deterministic routing instead.
+    if not isinstance(parsed.get("confidence"), (int, float)) or parsed["confidence"] < 0.60:
+        return None
+    return parsed
 
 
 def parse_intent(query: str, rule_parser: Callable) -> Dict[str, Any]:
@@ -132,6 +137,8 @@ def parse_intent(query: str, rule_parser: Callable) -> Dict[str, Any]:
     Returns:
         {'action', 'object', 'args', 'source'}，source 为 'llm' 或 'rules'
     """
+    if is_policy_override_attempt(query):
+        return {'action': None, 'object': None, 'args': {}, 'source': 'policy_rejection'}
     parsed = parse_with_llm(query)
     if isinstance(parsed, dict):
         action = parsed.get('action')

@@ -1,6 +1,7 @@
 import math
 import re
 import sqlite3
+import hashlib
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -14,6 +15,7 @@ DB_PATH = MEMORY_DIR / 'vectors.db'
 
 # 升级向量维度为 BAAI/bge-small-zh-v1.5 的标准 384 维
 VECTOR_DIM = 384
+FALLBACK_EMBEDDING_VERSION = 'stable-blake2b-v2'
 
 _model_cache = None
 
@@ -67,13 +69,18 @@ def _fallback_embedding(text: str, dim: int = VECTOR_DIM) -> np.ndarray:
     if not text:
         return vec
 
+    def stable_index(value: str) -> int:
+        """Stable across interpreter processes, unlike Python's salted hash()."""
+        digest = hashlib.blake2b(value.encode('utf-8'), digest_size=8).digest()
+        return int.from_bytes(digest, byteorder='big') % dim
+
     tokens = re.findall(r'[a-zA-Z0-9_\u4e00-\u9fff]+', text.lower())
     for token in tokens:
-        h = hash(token) % dim
+        h = stable_index(token)
         vec[h] += 1.0
         for i in range(len(token) - 1):
             bg = token[i:i + 2]
-            bh = hash(bg) % dim
+            bh = stable_index(bg)
             vec[bh] += 0.5
 
     norm = np.linalg.norm(vec)

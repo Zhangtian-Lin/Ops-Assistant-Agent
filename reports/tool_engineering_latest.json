@@ -1,0 +1,170 @@
+{
+  "报告名称": "Tool 与 Skill 工程可靠性证据",
+  "generated_at": "2026-08-19T06:58:17.251957Z",
+  "python": "3.12.13",
+  "platform": "Windows-11-10.0.22631-SP0",
+  "summary": {
+    "tests_run": 7,
+    "passed": 7,
+    "failures": 0,
+    "errors": 0,
+    "successful": true
+  },
+  "records": [
+    {
+      "test": "tests.test_tool_engineering.ToolEngineeringTests.test_handler_failure_and_invalid_output_are_classified",
+      "outcome": "passed",
+      "duration_ms": 1.21,
+      "detail": "",
+      "证据": {
+        "输入": {},
+        "预期": "异常脱敏且非法输出被拒绝",
+        "实际观察": {
+          "exception": {
+            "status": "execution_error",
+            "tool": "demo",
+            "error_code": "TOOL_EXECUTION_FAILED",
+            "message": "tool execution failed",
+            "duration_ms": 0.88,
+            "policy_decision": "allow",
+            "trace_id": "trace-test"
+          },
+          "invalid_output": {
+            "status": "invalid_result",
+            "tool": "demo",
+            "error_code": "RESULT_SCHEMA_INVALID",
+            "message": "tool returned an invalid result",
+            "duration_ms": 0.13,
+            "policy_decision": "allow",
+            "trace_id": "trace-test"
+          }
+        }
+      }
+    },
+    {
+      "test": "tests.test_tool_engineering.ToolEngineeringTests.test_high_risk_direct_registration_is_rejected",
+      "outcome": "passed",
+      "duration_ms": 0.06,
+      "detail": "",
+      "证据": {
+        "输入": {
+          "risk": "high",
+          "mode": "direct"
+        },
+        "预期": "注册阶段拒绝高风险直接执行",
+        "实际观察": {
+          "registration": "rejected"
+        }
+      }
+    },
+    {
+      "test": "tests.test_tool_engineering.ToolEngineeringTests.test_permission_is_required",
+      "outcome": "passed",
+      "duration_ms": 0.04,
+      "detail": "",
+      "证据": {
+        "输入": {
+          "permissions": []
+        },
+        "预期": "缺少权限时拒绝执行",
+        "实际观察": {
+          "status": "permission_denied",
+          "tool": "demo",
+          "error_code": "PERMISSION_DENIED",
+          "message": "required permission is missing",
+          "duration_ms": 0.0,
+          "policy_decision": "deny",
+          "trace_id": "trace-test"
+        }
+      }
+    },
+    {
+      "test": "tests.test_tool_engineering.ToolEngineeringTests.test_schema_rejects_extra_arguments",
+      "outcome": "passed",
+      "duration_ms": 0.03,
+      "detail": "",
+      "证据": {
+        "输入": {
+          "tool": "demo",
+          "arguments": {
+            "command": "whoami"
+          }
+        },
+        "预期": "Schema 拒绝额外字段",
+        "实际观察": {
+          "status": "invalid_arguments",
+          "tool": "demo",
+          "error_code": "ARG_SCHEMA_INVALID",
+          "message": "$ contains unknown fields: command",
+          "duration_ms": 0.0,
+          "policy_decision": "deny",
+          "trace_id": "trace-test"
+        }
+      }
+    },
+    {
+      "test": "tests.test_tool_engineering.ToolEngineeringTests.test_skill_requires_scan_and_explicit_confirmation",
+      "outcome": "passed",
+      "duration_ms": 86.85,
+      "detail": "",
+      "证据": {
+        "输入": {
+          "candidate_id": "skill-28f32510202d41f6813ff5a181eb9ec5",
+          "wrong_confirmation": "yes"
+        },
+        "预期": "必须扫描通过并输入绑定摘要的确认短语后才能安装",
+        "实际观察": {
+          "scanned": {
+            "verdict": "PASS",
+            "max_severity": "L0",
+            "finding_count": 0,
+            "summary": "未发现安全风险"
+          },
+          "confirmed_state": "confirmed",
+          "installed_state": "installed"
+        }
+      }
+    },
+    {
+      "test": "tests.test_tool_engineering.ToolEngineeringTests.test_timeout_is_classified",
+      "outcome": "passed",
+      "duration_ms": 112.37,
+      "detail": "",
+      "证据": {
+        "输入": {
+          "timeout_seconds": 0.1
+        },
+        "预期": "超时被归类且 Agent 及时返回",
+        "实际观察": {
+          "status": "timeout",
+          "tool": "demo",
+          "error_code": "TOOL_TIMEOUT",
+          "message": "tool exceeded its time limit",
+          "duration_ms": 112.23,
+          "policy_decision": "allow",
+          "trace_id": "trace-test"
+        }
+      }
+    },
+    {
+      "test": "tests.test_tool_engineering.ToolEngineeringTests.test_unknown_tool_is_denied",
+      "outcome": "passed",
+      "duration_ms": 0.31,
+      "detail": "",
+      "证据": {
+        "输入": {
+          "tool": "run_powershell"
+        },
+        "预期": "未知工具拒绝且处理函数不运行",
+        "实际观察": {
+          "status": "unknown_tool",
+          "tool": "run_powershell",
+          "error_code": "TOOL_UNKNOWN",
+          "duration_ms": 0.01,
+          "policy_decision": "deny",
+          "trace_id": "trace-unknown"
+        }
+      }
+    }
+  ]
+}

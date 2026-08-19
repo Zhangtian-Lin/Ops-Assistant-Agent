@@ -67,11 +67,16 @@ def build_context(principal: Principal) -> SecurityContext:
 
 
 def require_permission(context: SecurityContext, permission: str) -> None:
+    if permission not in permissions_for(context):
+        raise PermissionError(f"{context.principal.principal_id} lacks {permission}")
+
+
+def permissions_for(context: SecurityContext) -> FrozenSet[str]:
+    """Resolve permissions from trusted SID-to-role configuration."""
     policy = _load_yaml(IDENTITY_POLICY_FILE)
     role_defs = policy.get("roles", {})
     permissions = set()
     for role in context.roles:
         entry = role_defs.get(role, {}) if isinstance(role_defs, dict) else {}
         permissions.update(entry.get("permissions", []) if isinstance(entry, dict) else [])
-    if permission not in permissions:
-        raise PermissionError(f"{context.principal.principal_id} lacks {permission}")
+    return frozenset(permissions)

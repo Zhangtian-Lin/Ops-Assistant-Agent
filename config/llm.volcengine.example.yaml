@@ -1,0 +1,10 @@
+# 火山方舟 API Key 只放入 ARK_API_KEY 环境变量，不写入本文件。
+llm:
+  enabled: true
+  provider: volcengine
+  base_url: https://ark.cn-beijing.volces.com/api/v3
+  model: doubao-seed-2-1-turbo-260628
+  api_key_env: ARK_API_KEY
+  timeout_seconds: 12
+  max_retries: 1
+  max_output_tokens: 180

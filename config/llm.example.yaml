@@ -1,0 +1,10 @@
+# Copy to config/llm.yaml. API key stays only in the named environment variable.
+llm:
+  enabled: false
+  provider: openai_compatible
+  base_url: https://api.openai.com/v1
+  model: ""
+  api_key_env: OPS_AGENT_LLM_API_KEY
+  timeout_seconds: 12
+  max_retries: 1
+  max_output_tokens: 180

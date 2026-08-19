@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from core.action_policy import POLICY_VERSION, get_action_policy
+from core.audit import build_event, new_trace_id, valid_trace_id
 
 WORKSPACE_ROOT = Path(__file__).resolve().parent.parent
 RUNTIME_DIR = WORKSPACE_ROOT / "data" / "runtime"
@@ -59,7 +60,11 @@ def _record_event(
     previous_status: Optional[str],
     new_status: Optional[str],
     metadata: Optional[Dict[str, Any]] = None,
+    trace_id: Optional[str] = None,
 ) -> None:
+    trace_id = trace_id if valid_trace_id(trace_id) else new_trace_id()
+    event_id = f"evt-{secrets.token_urlsafe(18)}"
+    timestamp = _iso()
     conn.execute(
         """
         INSERT INTO approval_audit_events (
@@ -68,15 +73,28 @@ def _record_event(
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
-            f"evt-{secrets.token_urlsafe(18)}",
+            event_id,
             request_id,
             event_type,
             actor_id,
-            _iso(),
+            timestamp,
             previous_status,
             new_status,
-            _canonical_json(metadata or {}),
+            _canonical_json({**(metadata or {}), "trace_id": trace_id}),
         ),
+    )
+    event = build_event(
+        trace_id=trace_id,
+        event_name=f"approval.{event_type}",
+        outcome=new_status or "recorded",
+        severity="error" if new_status == "failed" else "information",
+        request_id=request_id,
+        actor_id=actor_id,
+        fields={"previous_status": previous_status, "new_status": new_status, "audit_event_id": event_id},
+    )
+    conn.execute(
+        "INSERT INTO audit_outbox (outbox_id, event_json, created_at) VALUES (?, ?, ?)",
+        (event["event_id"], _canonical_json(event), timestamp),
     )
 
 
@@ -174,8 +192,21 @@ def initialize() -> None:
             )
             """
         )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS audit_outbox (
+                outbox_id TEXT PRIMARY KEY,
+                event_json TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                delivered_at TEXT,
+                attempts INTEGER NOT NULL DEFAULT 0,
+                last_error TEXT
+            )
+            """
+        )
         conn.execute("CREATE INDEX IF NOT EXISTS idx_approval_status ON approval_requests(status)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_approval_events_request ON approval_audit_events(request_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_outbox_pending ON audit_outbox(delivered_at, created_at)")
         _migrate_legacy_requests(conn)
         _expire_pending(conn)
 
@@ -235,6 +266,7 @@ def create_request(
     details: Dict[str, Any],
     requester_id: str,
     requester_session_id: Optional[str] = None,
+    trace_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     initialize()
     policy = get_action_policy(action)
@@ -266,7 +298,7 @@ def create_request(
                 POLICY_VERSION,
             ),
         )
-        _record_event(conn, request_id, "created", requester_id, None, "pending")
+        _record_event(conn, request_id, "created", requester_id, None, "pending", trace_id=trace_id)
         row = conn.execute("SELECT * FROM approval_requests WHERE request_id = ?", (request_id,)).fetchone()
     return {"status": "pending", "request": _row_to_request(row)}
 
@@ -292,7 +324,7 @@ def get_request(request_id: str) -> Optional[Dict[str, Any]]:
     return _row_to_request(row) if row else None
 
 
-def approve_request(request_id: str, approver_id: str) -> Dict[str, Any]:
+def approve_request(request_id: str, approver_id: str, trace_id: Optional[str] = None) -> Dict[str, Any]:
     initialize()
     with _connect() as conn:
         conn.execute("BEGIN IMMEDIATE")
@@ -312,12 +344,12 @@ def approve_request(request_id: str, approver_id: str) -> Dict[str, Any]:
             """,
             (approver_id, _iso(), request_id),
         )
-        _record_event(conn, request_id, "approved", approver_id, "pending", "approved")
+        _record_event(conn, request_id, "approved", approver_id, "pending", "approved", trace_id=trace_id)
         updated = conn.execute("SELECT * FROM approval_requests WHERE request_id = ?", (request_id,)).fetchone()
     return {"status": "approved", "request": _row_to_request(updated)}
 
 
-def claim_execution(request_id: str, executor_id: str = "agent") -> Dict[str, Any]:
+def claim_execution(request_id: str, executor_id: str = "agent", trace_id: Optional[str] = None) -> Dict[str, Any]:
     initialize()
     with _connect() as conn:
         conn.execute("BEGIN IMMEDIATE")
@@ -336,12 +368,12 @@ def claim_execution(request_id: str, executor_id: str = "agent") -> Dict[str, An
             """,
             (_iso(), request_id),
         )
-        _record_event(conn, request_id, "executing", executor_id, "approved", "executing")
+        _record_event(conn, request_id, "executing", executor_id, "approved", "executing", trace_id=trace_id)
         updated = conn.execute("SELECT * FROM approval_requests WHERE request_id = ?", (request_id,)).fetchone()
     return {"status": "executing", "request": _row_to_request(updated)}
 
 
-def complete_execution(request_id: str, result: Dict[str, Any], error_code: Optional[str] = None) -> Dict[str, Any]:
+def complete_execution(request_id: str, result: Dict[str, Any], error_code: Optional[str] = None, trace_id: Optional[str] = None) -> Dict[str, Any]:
     initialize()
     final_status = "failed" if error_code else "executed"
     result_json = _canonical_json(result)
@@ -360,12 +392,12 @@ def complete_execution(request_id: str, result: Dict[str, Any], error_code: Opti
             """,
             (final_status, _iso(), result_json, error_code, request_id),
         )
-        _record_event(conn, request_id, final_status, "agent", "executing", final_status, {"error_code": error_code})
+        _record_event(conn, request_id, final_status, "agent", "executing", final_status, {"error_code": error_code}, trace_id)
         updated = conn.execute("SELECT * FROM approval_requests WHERE request_id = ?", (request_id,)).fetchone()
     return {"status": final_status, "request": _row_to_request(updated)}
 
 
-def cancel_request(request_id: str, actor_id: str) -> Dict[str, Any]:
+def cancel_request(request_id: str, actor_id: str, trace_id: Optional[str] = None) -> Dict[str, Any]:
     initialize()
     with _connect() as conn:
         conn.execute("BEGIN IMMEDIATE")
@@ -379,7 +411,7 @@ def cancel_request(request_id: str, actor_id: str) -> Dict[str, Any]:
             "UPDATE approval_requests SET status = 'cancelled', completed_at = ?, version = version + 1 WHERE request_id = ?",
             (_iso(), request_id),
         )
-        _record_event(conn, request_id, "cancelled", actor_id, row["status"], "cancelled")
+        _record_event(conn, request_id, "cancelled", actor_id, row["status"], "cancelled", trace_id=trace_id)
         updated = conn.execute("SELECT * FROM approval_requests WHERE request_id = ?", (request_id,)).fetchone()
     return {"status": "cancelled", "request": _row_to_request(updated)}
 
@@ -396,3 +428,40 @@ def list_audit_events(request_id: str) -> List[Dict[str, Any]]:
         item["metadata"] = json.loads(item.pop("metadata_json"))
         result.append(item)
     return result
+
+
+def queue_broker_event(trace_id: str, event_name: str, outcome: str, actor_id: Optional[str] = None, fields: Optional[Dict[str, Any]] = None, severity: str = "information") -> None:
+    """Persist a non-transition Broker event for later Event Log delivery."""
+    initialize()
+    event = build_event(trace_id=trace_id, event_name=event_name, outcome=outcome, actor_id=actor_id, fields=fields, severity=severity)
+    with _connect() as conn:
+        conn.execute("INSERT INTO audit_outbox (outbox_id, event_json, created_at) VALUES (?, ?, ?)", (event["event_id"], _canonical_json(event), event["timestamp"]))
+
+
+def deliver_audit_outbox(writer: Any, limit: int = 100) -> Dict[str, int]:
+    """Deliver pending events in order. A failure leaves the event pending for retry."""
+    initialize()
+    delivered = failed = 0
+    with _connect() as conn:
+        rows = conn.execute("SELECT outbox_id, event_json FROM audit_outbox WHERE delivered_at IS NULL ORDER BY created_at LIMIT ?", (limit,)).fetchall()
+        for row in rows:
+            try:
+                writer.write(json.loads(row["event_json"]))
+            except Exception as exc:
+                conn.execute("UPDATE audit_outbox SET attempts = attempts + 1, last_error = ? WHERE outbox_id = ?", (type(exc).__name__, row["outbox_id"]))
+                failed += 1
+            else:
+                conn.execute("UPDATE audit_outbox SET delivered_at = ?, attempts = attempts + 1, last_error = NULL WHERE outbox_id = ?", (_iso(), row["outbox_id"]))
+                delivered += 1
+    return {"delivered": delivered, "failed": failed}
+
+
+def list_outbox_events(delivered: Optional[bool] = None) -> List[Dict[str, Any]]:
+    initialize()
+    with _connect() as conn:
+        query = "SELECT * FROM audit_outbox"
+        params: tuple = ()
+        if delivered is not None:
+            query += " WHERE delivered_at IS " + ("NOT NULL" if delivered else "NULL")
+        rows = conn.execute(query + " ORDER BY created_at", params).fetchall()
+    return [{**dict(row), "event": json.loads(row["event_json"])} for row in rows]

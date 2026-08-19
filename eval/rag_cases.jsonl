@@ -1,0 +1,30 @@
+{"question":"电脑最近很卡，应该先检查什么？","expected_sources":["performance-diagnosis.md"]}
+{"question":"CPU 一直 90% 怎么继续排查？","expected_sources":["performance-diagnosis.md"]}
+{"question":"内存可用量很低会造成卡顿吗？","expected_sources":["performance-diagnosis.md"]}
+{"question":"系统盘空间和电脑变慢有什么关系？","expected_sources":["performance-diagnosis.md"]}
+{"question":"性能排查能不能直接结束进程？","expected_sources":["performance-diagnosis.md"]}
+{"question":"C盘快满了要先做什么？","expected_sources":["disk-space-and-health.md"]}
+{"question":"系统盘低于多少空间需要注意？","expected_sources":["disk-space-and-health.md"]}
+{"question":"能不能自动删除下载目录腾出空间？","expected_sources":["disk-space-and-health.md"]}
+{"question":"SMART 警告意味着什么？","expected_sources":["disk-space-and-health.md"]}
+{"question":"容量正常是否代表硬盘健康？","expected_sources":["disk-space-and-health.md"]}
+{"question":"检查网络首先看什么本机信息？","expected_sources":["network-dns-tls.md"]}
+{"question":"DNS 解析失败应该怎么查？","expected_sources":["network-dns-tls.md"]}
+{"question":"TCP 连不上服务端口时检查什么？","expected_sources":["network-dns-tls.md"]}
+{"question":"TLS 证书检查关注哪些内容？","expected_sources":["network-dns-tls.md"]}
+{"question":"网络诊断可以扫描任意网段端口吗？","expected_sources":["network-dns-tls.md"]}
+{"question":"如何从 Windows 日志定位系统错误？","expected_sources":["windows-event-log.md"]}
+{"question":"事件日志需要记录哪些字段？","expected_sources":["windows-event-log.md"]}
+{"question":"单条 Error 能直接判断根因吗？","expected_sources":["windows-event-log.md"]}
+{"question":"系统错误要和哪些信息交叉验证？","expected_sources":["windows-event-log.md"]}
+{"question":"Agent 可以自动清理 Windows Event Log 吗？","expected_sources":["windows-event-log.md"]}
+{"question":"nginx 服务停止先检查什么？","expected_sources":["service-troubleshooting.md"]}
+{"question":"服务启动失败要怎样记录？","expected_sources":["service-troubleshooting.md"]}
+{"question":"能根据一句话自动重启服务吗？","expected_sources":["service-troubleshooting.md"]}
+{"question":"服务排查需要关注哪些配置问题？","expected_sources":["service-troubleshooting.md"]}
+{"question":"目前允许查询哪些服务？","expected_sources":["service-troubleshooting.md"]}
+{"question":"Windows 安全基线检查哪些项目？","expected_sources":["security-baseline.md"]}
+{"question":"安全检查日志里可以保存完整用户路径吗？","expected_sources":["security-baseline.md"]}
+{"question":"发现安全异常后第一步是什么？","expected_sources":["security-baseline.md"]}
+{"question":"可以关闭 Defender 修复问题吗？","expected_sources":["security-baseline.md"]}
+{"question":"修改防火墙需要满足什么条件？","expected_sources":["security-baseline.md"]}

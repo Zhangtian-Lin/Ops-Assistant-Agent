@@ -1,0 +1,10 @@
+# Copy to config/llm.yaml. Never put the real Groq key in this file.
+llm:
+  enabled: true
+  provider: groq
+  base_url: https://api.groq.com/openai/v1
+  model: "openai/gpt-oss-20b"
+  api_key_env: GROQ_API_KEY
+  timeout_seconds: 12
+  max_retries: 1
+  max_output_tokens: 180

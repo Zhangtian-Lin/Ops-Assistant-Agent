@@ -585,16 +585,41 @@ def search_memory(query: Optional[str] = None, max_entries: int = 10) -> Dict[st
     return retrieve(query, topk=max_entries)
 
 
+_knowledge_retriever = None
+
+
+def get_knowledge_retriever():
+    """Return the shared runtime knowledge retriever, initialized once per process."""
+    global _knowledge_retriever
+    if _knowledge_retriever is None:
+        from core.rag import KnowledgeRetriever
+
+        knowledge_dir = Path(__file__).resolve().parent.parent / 'data' / 'knowledge_base'
+        _knowledge_retriever = KnowledgeRetriever.from_directory(
+            knowledge_dir,
+            chunk_size=400,
+            overlap=40,
+            mode='hybrid',
+        )
+    return _knowledge_retriever
+
+
+def reset_knowledge_retriever() -> None:
+    """Clear the process cache after knowledge files or retrieval config change."""
+    global _knowledge_retriever
+    _knowledge_retriever = None
+
+
 def retrieve_knowledge(query: Optional[str] = None, top_k: int = 5) -> List[Dict[str, Any]]:
     """从静态知识库（item_type='knowledge'）检索相关内容。
 
     与个人历史记忆（item_type='history'）分离，用于 RAG 场景下的运维标准/SOP 召回。
-    返回结果中的 text 已带「来源: 文件名」前缀（见 ingest_knowledge.py）。
+    Agent 和 Eval 共用 core.rag.KnowledgeRetriever，避免评测生产路径分叉。
     """
     if not query:
         return []
     try:
-        return vector_engine.search_similar(query, top_k=top_k, item_type='knowledge')
+        return get_knowledge_retriever().search_records(query, top_k=top_k)
     except Exception:
         return []
 

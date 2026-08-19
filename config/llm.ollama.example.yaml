@@ -1,0 +1,10 @@
+# Ollama runs only on this computer. No API key is used.
+llm:
+  enabled: true
+  provider: ollama
+  base_url: http://127.0.0.1:11434/v1
+  model: qwen3:4b
+  api_key_env: ""
+  timeout_seconds: 30
+  max_retries: 0
+  max_output_tokens: 180

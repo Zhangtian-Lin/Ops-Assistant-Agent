@@ -6,6 +6,7 @@ $workspaceRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $python = Join-Path $workspaceRoot '.venv\Scripts\python.exe'
 $modeFile = Join-Path $workspaceRoot 'config\security_mode.yaml'
 $policyFile = Join-Path $workspaceRoot 'config\identity_policy.yaml'
+$llmFile = Join-Path $workspaceRoot 'config\llm.yaml'
 $runtimeDir = Join-Path $workspaceRoot 'data\runtime'
 $brokerStdoutLog = Join-Path $runtimeDir 'broker.stdout.log'
 $brokerStderrLog = Join-Path $runtimeDir 'broker.stderr.log'
@@ -13,6 +14,13 @@ $brokerReadyFile = Join-Path $runtimeDir 'broker.ready'
 
 if (-not (Test-Path -LiteralPath $python)) {
     throw "Python virtual environment was not found: $python"
+}
+
+if (-not (Test-Path -LiteralPath $llmFile)) {
+    & $python (Join-Path $workspaceRoot 'scripts\configure_llm.py')
+    if ($LASTEXITCODE -ne 0) {
+        throw 'LLM initialization was not completed; Agent was not started.'
+    }
 }
 
 function Get-BrokerDiagnostic {
