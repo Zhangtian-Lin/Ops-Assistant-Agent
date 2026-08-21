@@ -1,18 +1,52 @@
 {
-  "generated_at": "2026-08-19T09:23:50.435419Z",
-  "python": "3.12.8",
+  "generated_at": "2026-08-20T06:47:52.253728Z",
+  "python": "3.12.13",
   "platform": "Windows-11-10.0.22631-SP0",
   "summary": {
-    "tests_run": 45,
+    "tests_run": 49,
     "failures": 0,
     "errors": 0,
     "successful": true
   },
   "records": [
     {
+      "test": "tests.test_agent_eval_dataset.AgentEvalDatasetTests.test_dataset_has_exact_versioned_distribution",
+      "outcome": "passed",
+      "duration_ms": 3.11,
+      "detail": "",
+      "证据": {
+        "输入": {
+          "fixture": "D:\\实习\\my-agent\\tests\\fixtures\\agent_eval_cases.jsonl"
+        },
+        "预期": {
+          "明确只读请求": 40,
+          "模糊自然语言": 35,
+          "非法参数": 25,
+          "高风险与越权": 30,
+          "Prompt Injection": 25,
+          "Tool故障与超时": 20,
+          "无答案或需要追问": 15,
+          "多步骤请求": 10
+        },
+        "实际观察": {
+          "cases": 200,
+          "distribution": {
+            "明确只读请求": 40,
+            "模糊自然语言": 35,
+            "非法参数": 25,
+            "高风险与越权": 30,
+            "Prompt Injection": 25,
+            "Tool故障与超时": 20,
+            "无答案或需要追问": 15,
+            "多步骤请求": 10
+          }
+        }
+      }
+    },
+    {
       "test": "tests.test_approvals.ApprovalStateMachineTests.test_concurrent_execution_claim_has_exactly_one_winner",
       "outcome": "passed",
-      "duration_ms": 227.07,
+      "duration_ms": 359.18,
       "detail": "",
       "证据": {
         "输入": {
@@ -33,7 +67,7 @@
     {
       "test": "tests.test_approvals.ApprovalStateMachineTests.test_expired_request_cannot_be_approved",
       "outcome": "passed",
-      "duration_ms": 62.67,
+      "duration_ms": 82.76,
       "detail": "",
       "证据": {
         "输入": {
@@ -49,7 +83,7 @@
     {
       "test": "tests.test_approvals.ApprovalStateMachineTests.test_tampered_snapshot_is_failed_before_approval",
       "outcome": "passed",
-      "duration_ms": 68.98,
+      "duration_ms": 95.92,
       "detail": "",
       "证据": {
         "输入": {
@@ -65,7 +99,7 @@
     {
       "test": "tests.test_approvals.ApprovalStateMachineTests.test_valid_lifecycle_is_audited",
       "outcome": "passed",
-      "duration_ms": 75.33,
+      "duration_ms": 116.5,
       "detail": "",
       "证据": {
         "输入": {
@@ -87,7 +121,7 @@
     {
       "test": "tests.test_audit.AuditPipelineTests.test_failed_eventlog_delivery_stays_in_outbox_for_retry",
       "outcome": "passed",
-      "duration_ms": 62.0,
+      "duration_ms": 91.06,
       "detail": "",
       "证据": {
         "输入": {
@@ -110,7 +144,7 @@
     {
       "test": "tests.test_audit.AuditPipelineTests.test_sanitized_preview_hides_secret_and_user_profile",
       "outcome": "passed",
-      "duration_ms": 24.91,
+      "duration_ms": 32.52,
       "detail": "",
       "证据": {
         "输入": {
@@ -128,7 +162,7 @@
     {
       "test": "tests.test_audit.AuditPipelineTests.test_trace_is_preserved_and_sensitive_actor_is_redacted",
       "outcome": "passed",
-      "duration_ms": 51.41,
+      "duration_ms": 66.52,
       "detail": "",
       "证据": {
         "输入": {
@@ -139,14 +173,14 @@
         "实际观察": {
           "delivered": 1,
           "trace_id": "trc-0123456789abcdef",
-          "actor_ref": "actor-hmac:561afe5a845ca945ef63"
+          "actor_ref": "actor-hmac:29d19243cf7f1f55f282"
         }
       }
     },
     {
       "test": "tests.test_llm_client.LLMEngineeringTests.test_groq_provider_uses_same_bounded_client_contract",
       "outcome": "passed",
-      "duration_ms": 1.54,
+      "duration_ms": 2.5,
       "detail": "",
       "证据": {
         "输入": {
@@ -164,7 +198,7 @@
     {
       "test": "tests.test_llm_client.LLMEngineeringTests.test_http_error_exposes_code_but_never_provider_message",
       "outcome": "passed",
-      "duration_ms": 0.95,
+      "duration_ms": 1.1,
       "detail": "",
       "证据": {
         "输入": {
@@ -183,7 +217,7 @@
     {
       "test": "tests.test_llm_client.LLMEngineeringTests.test_invalid_content_reports_safe_finish_reason_without_raw_text",
       "outcome": "passed",
-      "duration_ms": 150.88,
+      "duration_ms": 151.22,
       "detail": "",
       "证据": {
         "输入": {
@@ -202,7 +236,7 @@
     {
       "test": "tests.test_llm_client.LLMEngineeringTests.test_low_confidence_and_extra_arguments_do_not_expand_tool_power",
       "outcome": "passed",
-      "duration_ms": 1.11,
+      "duration_ms": 2.88,
       "detail": "",
       "证据": {
         "输入": {
@@ -220,7 +254,7 @@
     {
       "test": "tests.test_llm_client.LLMEngineeringTests.test_missing_api_key_never_calls_transport",
       "outcome": "passed",
-      "duration_ms": 1.24,
+      "duration_ms": 3.93,
       "detail": "",
       "证据": {
         "输入": {
@@ -236,7 +270,7 @@
     {
       "test": "tests.test_llm_client.LLMEngineeringTests.test_ollama_needs_no_key_and_uses_json_object_mode",
       "outcome": "passed",
-      "duration_ms": 0.63,
+      "duration_ms": 0.93,
       "detail": "",
       "证据": {
         "输入": {
@@ -256,7 +290,7 @@
     {
       "test": "tests.test_llm_client.LLMEngineeringTests.test_ollama_rejects_non_loopback_endpoint",
       "outcome": "passed",
-      "duration_ms": 0.55,
+      "duration_ms": 1.19,
       "detail": "",
       "证据": {
         "输入": {
@@ -272,7 +306,7 @@
     {
       "test": "tests.test_llm_client.LLMEngineeringTests.test_schema_bound_result_exposes_metrics_without_secret",
       "outcome": "passed",
-      "duration_ms": 0.59,
+      "duration_ms": 1.63,
       "detail": "",
       "证据": {
         "输入": {
@@ -282,7 +316,7 @@
         "实际观察": {
           "ok": true,
           "metrics": {
-            "latency_ms": 0.02,
+            "latency_ms": 0.07,
             "attempts": 1,
             "model": "test-model",
             "input_tokens": 11,
@@ -295,7 +329,7 @@
     {
       "test": "tests.test_llm_client.LLMEngineeringTests.test_strict_intent_schema_closes_nested_args_object",
       "outcome": "passed",
-      "duration_ms": 0.57,
+      "duration_ms": 1.85,
       "detail": "",
       "证据": {
         "输入": {
@@ -317,7 +351,7 @@
     {
       "test": "tests.test_llm_client.LLMEngineeringTests.test_timeout_retries_then_rules_take_over",
       "outcome": "passed",
-      "duration_ms": 151.45,
+      "duration_ms": 155.08,
       "detail": "",
       "证据": {
         "输入": {
@@ -334,7 +368,7 @@
     {
       "test": "tests.test_llm_client.LLMEngineeringTests.test_volcengine_uses_ark_endpoint_key_name_and_json_mode",
       "outcome": "passed",
-      "duration_ms": 1.3,
+      "duration_ms": 3.31,
       "detail": "",
       "证据": {
         "输入": {
@@ -354,7 +388,7 @@
     {
       "test": "tests.test_llm_setup.LLMSetupTests.test_cloud_modes_store_variable_name_not_secret",
       "outcome": "passed",
-      "duration_ms": 0.71,
+      "duration_ms": 1.83,
       "detail": "",
       "证据": {
         "输入": {
@@ -375,7 +409,7 @@
     {
       "test": "tests.test_llm_setup.LLMSetupTests.test_ollama_config_is_local_keyless_and_no_download_occurs",
       "outcome": "passed",
-      "duration_ms": 3.55,
+      "duration_ms": 33.77,
       "detail": "",
       "证据": {
         "输入": {
@@ -394,7 +428,7 @@
     {
       "test": "tests.test_llm_setup.LLMSetupTests.test_rules_mode_keeps_agent_available_without_llm",
       "outcome": "passed",
-      "duration_ms": 0.03,
+      "duration_ms": 0.05,
       "detail": "",
       "证据": {
         "输入": {
@@ -410,7 +444,7 @@
     {
       "test": "tests.test_network_policy.NetworkPolicyTests.test_missing_policy_denies_external_tcp",
       "outcome": "passed",
-      "duration_ms": 0.89,
+      "duration_ms": 2.66,
       "detail": "",
       "证据": {
         "输入": {
@@ -429,7 +463,7 @@
     {
       "test": "tests.test_network_policy.NetworkPolicyTests.test_public_address_is_rejected_after_dns_resolution",
       "outcome": "passed",
-      "duration_ms": 3.76,
+      "duration_ms": 22.71,
       "detail": "",
       "证据": {
         "输入": {
@@ -449,7 +483,7 @@
     {
       "test": "tests.test_network_policy.NetworkPolicyTests.test_unallowlisted_host_is_denied_before_resolution",
       "outcome": "passed",
-      "duration_ms": 2.12,
+      "duration_ms": 21.0,
       "detail": "",
       "证据": {
         "输入": {
@@ -475,7 +509,7 @@
     {
       "test": "tests.test_rag.RAGEngineeringTests.test_chunking_preserves_source_and_respects_size",
       "outcome": "passed",
-      "duration_ms": 0.14,
+      "duration_ms": 1.56,
       "detail": "",
       "证据": {
         "输入": {
@@ -494,7 +528,7 @@
     {
       "test": "tests.test_rag.RAGEngineeringTests.test_fallback_embedding_is_stable_across_processes",
       "outcome": "passed",
-      "duration_ms": 162.31,
+      "duration_ms": 230.77,
       "detail": "",
       "证据": {
         "输入": {
@@ -510,7 +544,7 @@
     {
       "test": "tests.test_rag.RAGEngineeringTests.test_retrievers_return_traceable_chunks",
       "outcome": "passed",
-      "duration_ms": 1.98,
+      "duration_ms": 2.41,
       "detail": "",
       "证据": {
         "输入": {
@@ -529,7 +563,7 @@
     {
       "test": "tests.test_rag.RAGEngineeringTests.test_runtime_and_eval_share_the_same_retriever",
       "outcome": "passed",
-      "duration_ms": 19.96,
+      "duration_ms": 17.0,
       "detail": "",
       "证据": {
         "输入": {
@@ -551,9 +585,23 @@
       }
     },
     {
+      "test": "tests.test_routing_security.RoutingAndSafetyTests.test_common_vague_symptoms_have_deterministic_fallbacks",
+      "outcome": "passed",
+      "duration_ms": 0.68,
+      "detail": "",
+      "证据": null
+    },
+    {
+      "test": "tests.test_routing_security.RoutingAndSafetyTests.test_control_text_cannot_be_misrouted_as_readonly_system_check",
+      "outcome": "passed",
+      "duration_ms": 0.33,
+      "detail": "",
+      "证据": null
+    },
+    {
       "test": "tests.test_routing_security.RoutingAndSafetyTests.test_disk_risk_question_routes_to_health_check",
       "outcome": "passed",
-      "duration_ms": 0.25,
+      "duration_ms": 0.14,
       "detail": "",
       "证据": {
         "输入": {
@@ -571,7 +619,7 @@
     {
       "test": "tests.test_routing_security.RoutingAndSafetyTests.test_invalid_drive_and_unregistered_tool_are_rejected",
       "outcome": "passed",
-      "duration_ms": 30.23,
+      "duration_ms": 38.06,
       "detail": "",
       "证据": {
         "输入": {
@@ -587,7 +635,7 @@
             "error_code": "TOOL_UNKNOWN",
             "duration_ms": 0.01,
             "policy_decision": "deny",
-            "trace_id": "trace-13b3beb4bcd44c5399ad6dea11396cae"
+            "trace_id": "trace-d992f9ab4f65429b8e99d7f7a270141a"
           }
         }
       }
@@ -595,7 +643,7 @@
     {
       "test": "tests.test_routing_security.RoutingAndSafetyTests.test_known_readonly_requests_select_registered_tools",
       "outcome": "passed",
-      "duration_ms": 1.72,
+      "duration_ms": 2.52,
       "detail": "",
       "证据": {
         "输入": {
@@ -624,9 +672,16 @@
       }
     },
     {
+      "test": "tests.test_routing_security.RoutingAndSafetyTests.test_multi_step_request_does_not_silently_execute_only_one_step",
+      "outcome": "passed",
+      "duration_ms": 0.27,
+      "detail": "",
+      "证据": null
+    },
+    {
       "test": "tests.test_routing_security.RoutingAndSafetyTests.test_system_categories_are_allowlisted",
       "outcome": "passed",
-      "duration_ms": 0.03,
+      "duration_ms": 0.04,
       "detail": "",
       "证据": {
         "输入": {
@@ -643,7 +698,7 @@
     {
       "test": "tests.test_routing_security.RoutingAndSafetyTests.test_unknown_and_high_risk_text_never_maps_to_an_unknown_executor",
       "outcome": "passed",
-      "duration_ms": 0.77,
+      "duration_ms": 0.97,
       "detail": "",
       "证据": {
         "输入": {
@@ -664,7 +719,7 @@
     {
       "test": "tests.test_routing_security.RoutingAndSafetyTests.test_vague_performance_question_has_readonly_fallback",
       "outcome": "passed",
-      "duration_ms": 0.13,
+      "duration_ms": 0.17,
       "detail": "",
       "证据": {
         "输入": {
@@ -680,7 +735,7 @@
     {
       "test": "tests.test_runtime.AgentRuntimeTests.test_allowed_tool_has_explicit_lifecycle_and_trace",
       "outcome": "passed",
-      "duration_ms": 11.0,
+      "duration_ms": 9.06,
       "detail": "",
       "证据": {
         "输入": {
@@ -703,7 +758,7 @@
     {
       "test": "tests.test_runtime.AgentRuntimeTests.test_policy_rejection_never_invokes_executor",
       "outcome": "passed",
-      "duration_ms": 8.14,
+      "duration_ms": 9.92,
       "detail": "",
       "证据": {
         "输入": {
@@ -720,7 +775,7 @@
     {
       "test": "tests.test_runtime.AgentRuntimeTests.test_tool_failure_is_isolated_to_current_task",
       "outcome": "passed",
-      "duration_ms": 8.91,
+      "duration_ms": 7.29,
       "detail": "",
       "证据": {
         "输入": {
@@ -737,7 +792,7 @@
     {
       "test": "tests.test_skill_scanner.SkillScannerTests.test_detects_obvious_command_execution_pattern",
       "outcome": "passed",
-      "duration_ms": 10.46,
+      "duration_ms": 19.71,
       "detail": "",
       "证据": {
         "输入": {
@@ -758,7 +813,7 @@
     {
       "test": "tests.test_tool_engineering.ToolEngineeringTests.test_handler_failure_and_invalid_output_are_classified",
       "outcome": "passed",
-      "duration_ms": 1.05,
+      "duration_ms": 0.58,
       "detail": "",
       "证据": {
         "输入": {},
@@ -769,7 +824,7 @@
             "tool": "demo",
             "error_code": "TOOL_EXECUTION_FAILED",
             "message": "tool execution failed",
-            "duration_ms": 0.54,
+            "duration_ms": 0.27,
             "policy_decision": "allow",
             "trace_id": "trace-test"
           },
@@ -778,7 +833,7 @@
             "tool": "demo",
             "error_code": "RESULT_SCHEMA_INVALID",
             "message": "tool returned an invalid result",
-            "duration_ms": 0.3,
+            "duration_ms": 0.17,
             "policy_decision": "allow",
             "trace_id": "trace-test"
           }
@@ -804,7 +859,7 @@
     {
       "test": "tests.test_tool_engineering.ToolEngineeringTests.test_permission_is_required",
       "outcome": "passed",
-      "duration_ms": 0.07,
+      "duration_ms": 0.06,
       "detail": "",
       "证据": {
         "输入": {
@@ -825,7 +880,7 @@
     {
       "test": "tests.test_tool_engineering.ToolEngineeringTests.test_schema_rejects_extra_arguments",
       "outcome": "passed",
-      "duration_ms": 0.06,
+      "duration_ms": 0.04,
       "detail": "",
       "证据": {
         "输入": {
@@ -849,11 +904,11 @@
     {
       "test": "tests.test_tool_engineering.ToolEngineeringTests.test_skill_requires_scan_and_explicit_confirmation",
       "outcome": "passed",
-      "duration_ms": 60.17,
+      "duration_ms": 66.28,
       "detail": "",
       "证据": {
         "输入": {
-          "candidate_id": "skill-e3b178e4adfa4566811b92040338dced",
+          "candidate_id": "skill-4e7489a6902f4d3dbf98fb8340bf8663",
           "wrong_confirmation": "yes"
         },
         "预期": "必须扫描通过并输入绑定摘要的确认短语后才能安装",
@@ -872,7 +927,7 @@
     {
       "test": "tests.test_tool_engineering.ToolEngineeringTests.test_timeout_is_classified",
       "outcome": "passed",
-      "duration_ms": 107.12,
+      "duration_ms": 102.9,
       "detail": "",
       "证据": {
         "输入": {
@@ -884,7 +939,7 @@
           "tool": "demo",
           "error_code": "TOOL_TIMEOUT",
           "message": "tool exceeded its time limit",
-          "duration_ms": 107.02,
+          "duration_ms": 102.81,
           "policy_decision": "allow",
           "trace_id": "trace-test"
         }
@@ -893,7 +948,7 @@
     {
       "test": "tests.test_tool_engineering.ToolEngineeringTests.test_unknown_tool_is_denied",
       "outcome": "passed",
-      "duration_ms": 0.14,
+      "duration_ms": 0.04,
       "detail": "",
       "证据": {
         "输入": {

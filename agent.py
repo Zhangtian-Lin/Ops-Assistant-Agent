@@ -232,12 +232,13 @@ def parse_action_and_object(question: str) -> Tuple[Optional[str], Optional[str]
     # never as an instruction to a memory/search tool.
     if any(phrase in q for phrase in ('忽略之前规则', '忽略所有规则', 'ignore previous rules', 'ignore all rules', '执行 powershell', '运行任意命令', 'arbitrary command')):
         return None, None
-    performance_question = any(w in q for w in ['电脑卡', '系统卡', '运行慢', '响应慢', '有点卡', '变卡', '卡顿', 'lag', 'slow'])
-    action = 'check' if performance_question or any(w in q for w in ['查', '查看', '查询', '检测', '看', 'check', 'inspect', '分布', '详情', '占用']) else 'control' if any(w in q for w in ['重启', 'restart', '启动', '停止', 'stop']) else None
+    performance_question = any(w in q for w in ['电脑卡', '系统卡', '运行慢', '响应慢', '响应有点慢', '有点卡', '变卡', '这么卡', '卡顿', '越来越慢', '特别慢', '反应慢', '有延迟', 'lag', 'slow'])
+    diagnostic_question = performance_question or any(w in q for w in ['是不是', '好像', '感觉', '不够用', '紧张', '快爆', '塞满', '没空间', '危险', '断网', '不稳定', '出问题'])
+    action = 'check' if diagnostic_question or any(w in q for w in ['查', '查看', '查询', '检测', '看', 'check', 'inspect', '分布', '详情', '占用']) else 'control' if any(w in q for w in ['重启', 'restart', '启动', '停止', 'stop']) else None
     # 先判断“明确意图词”（记忆/搜索/知识库/审计），避免被宽泛实体词（如“服务器”含“服务”）误抢
-    if any(w in q for w in ['记忆', '回顾', '历史', '上次', '之前', 'summary', '总结']):
+    if any(w in q for w in ['记忆', '回顾', '历史', '上次', '之前', '忘了刚才', 'summary', '总结']) or ('会话' in q and any(w in q for w in ['清', '删', '重置', 'reset'])):
         # detect clear/reset requests explicitly
-        if any(cw in q for cw in ['清空', '清除', '删除', '重置', 'reset']):
+        if any(cw in q for cw in ['清空', '清除', '删除', '删掉', '删记忆', '重置', 'reset']):
             obj = 'memory_clear'
         else:
             obj = 'memory_request'
@@ -261,13 +262,13 @@ def parse_action_and_object(question: str) -> Tuple[Optional[str], Optional[str]
         obj = 'cpu'
     elif '内存' in q or 'memory' in q:
         obj = 'memory'
-    elif any(w in q for w in ['分布', '详情', '占用']) and ('盘' in q or 'disk' in q or '磁盘' in q):
+    elif any(w in q for w in ['分布', '详情', '占用', '占空间', '哪些内容']) and ('盘' in q or 'disk' in q or '磁盘' in q):
         obj = 'disk_distribution'
     elif '磁盘' in q or 'disk' in q or 'df' in q or '盘' in q:
         obj = 'disk'
     elif '服务' in q or 'service' in q or 'nginx' in q:
         obj = 'service'
-    elif any(w in q for w in ['network', 'dns', 'tcp', 'tls', '\u7f51\u7edc', '\u7f51\u5361', '\u7aef\u53e3', '\u8bc1\u4e66']):
+    elif any(w in q for w in ['network', 'dns', 'tcp', 'tls', '\u7f51\u7edc', '\u7f51\u5361', '\u7aef\u53e3', '\u8bc1\u4e66', '断网', '网好像']):
         obj = 'network'
     else:
         obj = None
@@ -402,8 +403,17 @@ def cancel_request_tool(request_id: str, request_number: Optional[int] = None) -
 
 def route_task(question: str, capture: Optional[dict] = None) -> dict:
     """Map an input to a registered tool request; capture is observability-only."""
+    if _is_multi_step_request(question):
+        if capture is not None:
+            capture.update({'source': 'multi_step_rejection', 'intent': {'action': None, 'object': None, 'args': {}}})
+        return {'tool': 'none', 'message': '当前一次只执行一个操作；请把多个检查或操作拆开输入。', 'args': {}}
+    if _is_unsafe_control_request(question):
+        if capture is not None:
+            capture.update({'source': 'policy_rejection', 'intent': {'action': None, 'object': None, 'args': {}}})
+        return {'tool': 'none', 'message': '该控制操作没有已注册且获授权的工具。', 'args': {}}
     category = system_check_category(question)
-    if category:
+    knowledge_markers = ('标准', '规范', 'sop', '手册', '排查', '最佳实践', '怎么处理', '如何解决', '怎么解决', '如何排查')
+    if category and not any(marker in question.lower() for marker in knowledge_markers):
         if capture is not None:
             capture.update({'source': 'system_rule', 'intent': {'action': 'check', 'object': 'system', 'args': {'category': category}}})
         return {'tool': 'check_system', 'args': {'category': category}}
@@ -470,6 +480,44 @@ def route_task(question: str, capture: Optional[dict] = None) -> dict:
         path_arg = llm_args.get('path') or (m.group(1) if m else '.')
         return {'tool': 'audit_skill', 'args': {'path': path_arg}}
     return {'tool': 'none', 'message': '没有匹配到工具', 'args': {}}
+
+
+def _is_unsafe_control_request(question: str) -> bool:
+    lowered = question.lower()
+    markers = ('关闭防火墙', '禁用 defender', '格式化', '创建管理员', '导出所有密码', '导出密码', '修改系统注册表', '停止所有服务', '上传用户目录', '删除所有日志')
+    return any(marker in lowered for marker in markers)
+
+
+def _is_multi_step_request(question: str) -> bool:
+    lowered = question.lower()
+    if not any(marker in lowered for marker in ('和', '并', '然后', ' 再', '再停止', '、', '后批准')):
+        return False
+    capabilities = set()
+    checks = (
+        ('cpu', ('cpu', '处理器')),
+        ('memory', ('内存', 'memory')),
+        ('disk_health', ('磁盘健康', '磁盘故障', 'disk health')),
+        ('disk_distribution', ('空间分布', '占用详情', '哪些内容占空间')),
+        ('disk', ('盘空间', '磁盘空间')),
+        ('network', ('网络', '网卡', '断网', 'network')),
+        ('service', ('服务', 'nginx', 'mysql', 'redis')),
+        ('audit', ('扫描', '审计')),
+        ('search', ('搜索', 'search')),
+        ('memory_read', ('回顾', '历史')),
+        ('memory_clear', ('清空记忆', '删除记忆', '删记忆')),
+        ('approval', ('批准', '审批')),
+        ('event_errors', ('错误日志', '事件日志')),
+        ('driver', ('驱动',)),
+        ('gpu', ('gpu', '显卡')),
+        ('control', ('停止', '关闭', '禁用')),
+    )
+    for name, keywords in checks:
+        if any(keyword in lowered for keyword in keywords):
+            capabilities.add(name)
+    # A specific disk subtype supersedes the generic disk mention within the same clause.
+    if 'disk' in capabilities and len(capabilities & {'disk_health', 'disk_distribution'}) == 1:
+        capabilities.remove('disk')
+    return len(capabilities) >= 2
 
 
 def validate_args(tool_name: str, args: dict) -> Tuple[bool, str, dict]:

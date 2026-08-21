@@ -1,0 +1,70 @@
+{
+  "report_name": "CI verification evidence manifest",
+  "generated_at": "2026-08-20T06:47:56.429062Z",
+  "successful": true,
+  "environment": {
+    "python": "3.12.13",
+    "github_run_id": null,
+    "github_run_attempt": null,
+    "github_sha": null,
+    "github_ref": null,
+    "github_event_name": null
+  },
+  "summary": {
+    "targets": 5,
+    "passed": 5,
+    "failed": 0
+  },
+  "records": [
+    {
+      "name": "regression",
+      "command": "python.exe scripts/run_verification.py",
+      "exit_code": 0,
+      "duration_ms": 2537.94,
+      "report": "latest_verification.json",
+      "report_present": true,
+      "report_sha256": "d207f2e6cad56b8e300e195dd0d36b90cb16073f58ddb1cd212289c6d9722cbd",
+      "passed": true
+    },
+    {
+      "name": "intent_smoke_eval",
+      "command": "python.exe scripts/run_intent_eval.py",
+      "exit_code": 0,
+      "duration_ms": 272.42,
+      "report": "intent_eval_latest.json",
+      "report_present": true,
+      "report_sha256": "36a23d5a66c11be53f0d88d0e8e2c5866d863475728efcbf596475ea36acfbd5",
+      "passed": true
+    },
+    {
+      "name": "rag_eval",
+      "command": "python.exe scripts/run_rag_eval.py",
+      "exit_code": 0,
+      "duration_ms": 703.91,
+      "report": "rag_eval_latest.json",
+      "report_present": true,
+      "report_sha256": "ab852d53a293d30dd7db18aa1f6859ef3a9b99037a6a24d4ef812c64bddbaf1f",
+      "passed": true
+    },
+    {
+      "name": "tool_skill_eval",
+      "command": "python.exe scripts/run_tool_engineering_tests.py",
+      "exit_code": 0,
+      "duration_ms": 885.8,
+      "report": "tool_engineering_latest.json",
+      "report_present": true,
+      "report_sha256": "b26cfcae494d02ad048b2736021a4e9c41736e41221f73a168ee704989222e6d",
+      "passed": true
+    },
+    {
+      "name": "agent_e2e_eval_200",
+      "command": "python.exe scripts/run_agent_eval.py",
+      "exit_code": 0,
+      "duration_ms": 2120.18,
+      "report": "agent_eval_latest.json",
+      "report_present": true,
+      "report_sha256": "23bb575ca60414b0b228fbbbafbf8d16882f413c7d72c798d1001e7f6ba7d3a4",
+      "passed": true
+    }
+  ]
+}

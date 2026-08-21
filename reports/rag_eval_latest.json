@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-19T09:23:51.515296Z",
+  "generated_at": "2026-08-20T06:47:53.320526Z",
   "dataset": "eval\\rag_cases.jsonl",
   "limitations": [
     "Demo knowledge base, not production SOP.",

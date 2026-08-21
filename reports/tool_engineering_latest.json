@@ -1,6 +1,6 @@
 {
   "报告名称": "Tool 与 Skill 工程可靠性证据",
-  "generated_at": "2026-08-19T06:58:17.251957Z",
+  "generated_at": "2026-08-20T06:47:54.029731Z",
   "python": "3.12.13",
   "platform": "Windows-11-10.0.22631-SP0",
   "summary": {
@@ -14,7 +14,7 @@
     {
       "test": "tests.test_tool_engineering.ToolEngineeringTests.test_handler_failure_and_invalid_output_are_classified",
       "outcome": "passed",
-      "duration_ms": 1.21,
+      "duration_ms": 1.87,
       "detail": "",
       "证据": {
         "输入": {},
@@ -25,7 +25,7 @@
             "tool": "demo",
             "error_code": "TOOL_EXECUTION_FAILED",
             "message": "tool execution failed",
-            "duration_ms": 0.88,
+            "duration_ms": 1.39,
             "policy_decision": "allow",
             "trace_id": "trace-test"
           },
@@ -34,7 +34,7 @@
             "tool": "demo",
             "error_code": "RESULT_SCHEMA_INVALID",
             "message": "tool returned an invalid result",
-            "duration_ms": 0.13,
+            "duration_ms": 0.21,
             "policy_decision": "allow",
             "trace_id": "trace-test"
           }
@@ -44,7 +44,7 @@
     {
       "test": "tests.test_tool_engineering.ToolEngineeringTests.test_high_risk_direct_registration_is_rejected",
       "outcome": "passed",
-      "duration_ms": 0.06,
+      "duration_ms": 0.05,
       "detail": "",
       "证据": {
         "输入": {
@@ -105,11 +105,11 @@
     {
       "test": "tests.test_tool_engineering.ToolEngineeringTests.test_skill_requires_scan_and_explicit_confirmation",
       "outcome": "passed",
-      "duration_ms": 86.85,
+      "duration_ms": 108.03,
       "detail": "",
       "证据": {
         "输入": {
-          "candidate_id": "skill-28f32510202d41f6813ff5a181eb9ec5",
+          "candidate_id": "skill-d9be6641f41243879fac81dfe4fad02e",
           "wrong_confirmation": "yes"
         },
         "预期": "必须扫描通过并输入绑定摘要的确认短语后才能安装",
@@ -128,7 +128,7 @@
     {
       "test": "tests.test_tool_engineering.ToolEngineeringTests.test_timeout_is_classified",
       "outcome": "passed",
-      "duration_ms": 112.37,
+      "duration_ms": 102.3,
       "detail": "",
       "证据": {
         "输入": {
@@ -140,7 +140,7 @@
           "tool": "demo",
           "error_code": "TOOL_TIMEOUT",
           "message": "tool exceeded its time limit",
-          "duration_ms": 112.23,
+          "duration_ms": 102.11,
           "policy_decision": "allow",
           "trace_id": "trace-test"
         }
@@ -149,7 +149,7 @@
     {
       "test": "tests.test_tool_engineering.ToolEngineeringTests.test_unknown_tool_is_denied",
       "outcome": "passed",
-      "duration_ms": 0.31,
+      "duration_ms": 0.09,
       "detail": "",
       "证据": {
         "输入": {

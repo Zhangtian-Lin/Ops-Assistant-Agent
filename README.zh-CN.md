@@ -389,7 +389,7 @@ RAG 来源召回实验（默认不联网）可运行：
 ## 工程化与发布
 
 - `config/*.example.yaml` 是可提交模板；`config/*.yaml` 是本机配置，`data/runtime/` 是运行时状态，两者均不提交 Git。
-- GitHub Actions 在每次 push 到 `main` 或 Pull Request 时，于 Windows 环境运行完整验证、意图 Eval 和 RAG Eval，并将 JSON 证据作为 CI Artifact 保留 30 天。
+- GitHub Actions 在每次 push 到 `main` 或 Pull Request 时，于 Windows 环境运行完整回归、意图 Eval、RAG Eval、Tool/Skill Eval 和 200 条端到端 Agent Eval，并将 JSON 证据作为 CI Artifact 保留 30 天。必需检查名称为 `Required verification`；配置方法见 [`docs/CI与分支保护.md`](docs/CI与分支保护.md)。
 - 版本号在 [`VERSION`](VERSION)，变更记录在 [`CHANGELOG.md`](CHANGELOG.md)。Release 只可从 GitHub Actions 手动触发，且会在创建前重新运行验证。
 - Issue 使用 Bug / Feature 模板，并明确禁止提交 API Key、SID、审批库和私密原文。
 

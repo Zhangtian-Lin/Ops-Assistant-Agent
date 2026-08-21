@@ -1,0 +1,65 @@
+name: Verification
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verification-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verification:
+    name: Required verification
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install dependencies
+        run: python -m pip install --upgrade pip; python -m pip install -r requirements.txt
+
+      - name: Check patch integrity
+        shell: pwsh
+        run: |
+          if ('${{ github.event_name }}' -eq 'pull_request') {
+            git diff --check '${{ github.event.pull_request.base.sha }}' '${{ github.event.pull_request.head.sha }}'
+          } elseif ('${{ github.event_name }}' -eq 'push' -and '${{ github.event.before }}' -notmatch '^0+$') {
+            git diff --check '${{ github.event.before }}' '${{ github.sha }}'
+          } else {
+            git diff --check HEAD^ HEAD
+          }
+
+      - name: Run regression and evaluation suite
+        run: python scripts/run_ci_verification.py
+
+      - name: Upload verification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verification-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            reports/ci_verification_latest.json
+            reports/latest_verification.json
+            reports/intent_eval_latest.json
+            reports/rag_eval_latest.json
+            reports/tool_engineering_latest.json
+            reports/agent_eval_latest.json
+          if-no-files-found: warn
+          retention-days: 30

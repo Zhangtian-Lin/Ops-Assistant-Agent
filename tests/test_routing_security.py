@@ -60,3 +60,24 @@ class RoutingAndSafetyTests(EvidenceTestCase):
         ok, _, _ = agent.validate_args("check_system", {"category": "arbitrary_command"})
         self.assertFalse(ok)
         self.record_evidence({"allowed_category": "gpu", "blocked_category": "arbitrary_command"}, "仅允许系统检查白名单类别", {"gpu_allowed": True, "arbitrary_command_allowed": ok})
+
+    def test_control_text_cannot_be_misrouted_as_readonly_system_check(self):
+        for question in ("关闭防火墙", "禁用 Defender", "删除所有日志"):
+            with self.subTest(question=question):
+                self.assertEqual(self.route(question)["tool"], "none")
+
+    def test_multi_step_request_does_not_silently_execute_only_one_step(self):
+        for question in ("检查 CPU 和内存", "扫描当前目录并搜索 README"):
+            task = self.route(question)
+            self.assertEqual(task["tool"], "none")
+            self.assertIn("拆开", task["message"])
+
+    def test_common_vague_symptoms_have_deterministic_fallbacks(self):
+        cases = {
+            "系统响应有点慢帮我看看": "check_cpu",
+            "系统怎么这么卡": "check_cpu",
+            "我忘了刚才查过什么": "query_memory",
+        }
+        for question, expected in cases.items():
+            with self.subTest(question=question):
+                self.assertEqual(self.route(question)["tool"], expected)

@@ -56,10 +56,12 @@ The repository contains machine-readable verification evidence:
 
 - [Regression and security verification](reports/latest_verification.json)
 - [Intent-routing evaluation](reports/intent_eval_latest.json)
+- [200-case end-to-end Agent evaluation evidence](reports/agent_eval_latest.json)
 - [RAG source-retrieval evaluation](reports/rag_eval_latest.json)
 - [RAG evaluation notes and limitations](docs/RAG工程与评测.md)
 
 The current suite is run locally and in GitHub Actions on Windows. CI uploads its JSON reports as artifacts for 30 days.
+The protected-branch required check is named `Required verification`.
 
 ## Quick start
 
@@ -86,16 +88,20 @@ Do not commit `config/*.yaml`, `data/runtime/`, or API keys. See [configuration 
 .\.venv\Scripts\python.exe scripts\run_verification.py
 .\.venv\Scripts\python.exe scripts\run_intent_eval.py
 .\.venv\Scripts\python.exe scripts\run_rag_eval.py
+.\.venv\Scripts\python.exe scripts\run_agent_eval.py
+.\.venv\Scripts\python.exe scripts\run_ci_verification.py
 .\.venv\Scripts\python.exe scripts\check_release.py --tag v0.4.0
 ```
 
-Pushes and pull requests to `main` run the same verification path in [GitHub Actions](.github/workflows/verify.yml). Releases are manual and are only created after the release workflow reruns tests and evals; see [release process](docs/发布流程.md).
+Pushes and pull requests to `main` run the same verification path in [GitHub Actions](.github/workflows/verification.yml). Evidence is uploaded even when verification fails. Releases are manual and are only created after the release workflow reruns tests and evals; see [CI and branch protection](docs/CI与分支保护.md) and the [release process](docs/发布流程.md).
 
 ## Documentation map
 
 - [Chinese README](README.zh-CN.md): complete local setup and feature documentation.
 - [LLM engineering](docs/LLM工程化调用说明.md)
 - [Tool and Skill engineering](docs/Tool与Skill工程说明.md)
+- [200-case end-to-end Agent evaluation](docs/端到端Agent评测说明.md)
+- [CI artifacts and branch protection](docs/CI与分支保护.md)
 - [Agent Runtime](docs/Agent架构与运行时.md)
 - [RAG engineering](docs/RAG工程与评测.md)
 - [Audit tracing](docs/审计追踪实施说明.md)
