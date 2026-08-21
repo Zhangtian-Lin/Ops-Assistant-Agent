@@ -24,6 +24,15 @@ TARGETS = (
 )
 
 
+def _github_annotation(value: str) -> str:
+    """Keep CI diagnostics single-line and safe for GitHub workflow commands."""
+    return (
+        value.replace("%", "%25")
+        .replace("\r", "%0D")
+        .replace("\n", "%0A")
+    )
+
+
 def sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as stream:
@@ -44,7 +53,25 @@ def main() -> int:
     records = []
     for name, script, report_name in TARGETS:
         started = time.perf_counter()
-        completed = subprocess.run([sys.executable, script], cwd=ROOT, check=False)
+        completed = subprocess.run(
+            [sys.executable, script],
+            cwd=ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+        if completed.stdout:
+            print(completed.stdout, end="")
+        if completed.stderr:
+            print(completed.stderr, end="", file=sys.stderr)
+        if completed.returncode != 0 and os.getenv("GITHUB_ACTIONS") == "true":
+            diagnostic = (completed.stderr or completed.stdout or "No diagnostic output")[-3000:]
+            print(
+                f"::error title={_github_annotation(name + ' failed')}::"
+                f"{_github_annotation(diagnostic)}"
+            )
         report = REPORTS / report_name
         records.append({
             "name": name,
